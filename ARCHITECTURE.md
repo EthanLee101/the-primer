@@ -70,28 +70,58 @@ commits — Claude stages changes but does not commit.
 3. **Deterministic arithmetic problem generator** — pure Python, difficulty-
    parameterized, unit tested, no DB/LLM dependency yet. ✅ **Done**
 4. **Core API endpoints** — serve a problem / submit an answer, wired to DB
-   for attempt logging, fixed difficulty (adaptivity comes next). 🔶 **Current**
+   for attempt logging, fixed difficulty (adaptivity comes next). ✅ **Done**
 5. **Rules-based mastery/difficulty engine** — per-skill mastery + rolling
-   accuracy, persisted per child, drives next-problem difficulty.
+   accuracy, persisted per child, drives next-problem difficulty. ✅ **Done**
 6. **React frontend scaffold** — Vite + TypeScript, minimal child-facing UI
    (problem display, answer input, immediate feedback) hitting the API.
+   🔶 **Current**
 7. **Frontend adaptivity wiring** — full loop: child answers → backend
    updates mastery → next problem reflects it, rendered live.
 8. **LLM explanation layer** — Gemini integration for wrong-answer
    explanations/encouragement, decoupled from the grading path.
-9. **Parent dashboard API** — endpoints exposing per-child progress/mastery
-   summaries and session history.
-10. **Parent dashboard UI** — React view rendering progress per skill.
+   🌐 **Needs a Gemini API key** (Google AI Studio, free tier) before this
+   increment can run.
+9. **Parent dashboard API + parent auth** — endpoints exposing per-child
+   progress/mastery summaries and session history, plus parent account
+   creation and password-based login (hashed passwords, session/token
+   auth). This closes the "no auth" gap noted above — real per-child data
+   shouldn't be exposed unauthenticated.
+10. **Parent dashboard UI** — React view rendering progress per skill,
+    behind the login from increment 9.
 11. **Bayesian Knowledge Tracing upgrade** — replace/augment the rules-based
     engine with a BKT mastery-probability model.
 12. **Deployment & polish** — backend → Fly.io, DB → Neon, frontend →
     Vercel; secrets/env config; stretch (second skill domain / theming) if
     time allows.
+    🌐 **Needs Neon, Fly.io, and Vercel accounts** — nothing before this
+    increment requires anything outside local Docker Postgres.
 
 > Note: this 12-step breakdown was reconstructed from
 > `adaptive_tutor_handoff.md`'s build order and the resume bullets — the
 > user's original 12-increment list wasn't available this session. Correct
 > this list if it drifts from actual intent.
+
+## Known gaps (tracked, not accidental)
+
+- **No auth yet.** `child_id` and `attempt_id` are plain sequential integers
+  with no access control — anyone who has or guesses an ID can read/answer
+  any child's attempt. Acceptable for now (nothing sensitive at stake, no
+  public deploy yet). Confirmed with the user: this closes in increment 9,
+  folded into the parent dashboard API's scope (parent accounts, hashed
+  passwords via `passlib`/`argon2`, session/token auth) rather than a
+  separate numbered increment.
+- **No rate limiting yet.** Not needed while there's no public deployment
+  and no expensive calls (increment 8's Gemini calls are the first real
+  cost/abuse surface). Add it alongside increment 8, and again at increment
+  12's public deploy.
+- **Answer grading trusts the server, not the client.** When a problem is
+  served (`POST /children/{id}/problems`), the operands are persisted to the
+  `attempt` row immediately; grading (`POST /attempts/{id}/answer`) checks
+  the submission against those stored operands, never against anything the
+  client sends back. This was a deliberate call in increment 4 to avoid
+  trusting client-supplied grading inputs, even though the current stakes
+  (a kid answering their own practice problem) are low.
 
 ## Working agreement
 

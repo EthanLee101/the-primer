@@ -47,6 +47,21 @@ class Problem:
         return f"{self.operand_a} {symbol} {self.operand_b}"
 
 
+def grade(operand_a: int, operand_b: int, operation: Operation) -> int:
+    """The single source of truth for what's correct — used both when a problem
+    is generated and, unchanged, when a submitted answer is checked against
+    whatever operands were actually stored for that attempt."""
+    match operation:
+        case Operation.ADD:
+            return operand_a + operand_b
+        case Operation.SUBTRACT:
+            return operand_a - operand_b
+        case Operation.MULTIPLY:
+            return operand_a * operand_b
+        case Operation.DIVIDE:
+            return operand_a // operand_b
+
+
 def generate_problem(skill_code: str, difficulty: int) -> Problem:
     if difficulty < 1:
         raise ValueError("difficulty must be >= 1")
@@ -54,22 +69,19 @@ def generate_problem(skill_code: str, difficulty: int) -> Problem:
     if operation is None:
         raise ValueError(f"unknown skill code: {skill_code}")
 
-    if operation is Operation.ADD:
-        a, b = _random_pair(difficulty)
-        answer = a + b
-    elif operation is Operation.SUBTRACT:
+    if operation is Operation.SUBTRACT:
         a, b = _random_pair(difficulty)
         a, b = max(a, b), min(a, b)  # keep results non-negative for young learners
-        answer = a - b
-    elif operation is Operation.MULTIPLY:
-        a, b = _random_factor_pair(difficulty)
-        answer = a * b
-    else:  # DIVIDE
+    elif operation is Operation.ADD:
+        a, b = _random_pair(difficulty)
+    else:  # MULTIPLY or DIVIDE
         divisor, quotient = _random_factor_pair(difficulty)
-        a, b = divisor * quotient, divisor  # always divides evenly
-        answer = quotient
+        if operation is Operation.DIVIDE:
+            a, b = divisor * quotient, divisor  # always divides evenly
+        else:
+            a, b = divisor, quotient
 
-    return Problem(skill_code, difficulty, a, b, operation, answer)
+    return Problem(skill_code, difficulty, a, b, operation, grade(a, b, operation))
 
 
 def _random_pair(difficulty: int) -> tuple[int, int]:

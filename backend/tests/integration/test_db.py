@@ -11,7 +11,14 @@ def test_attempt_roundtrip() -> None:
         db.add_all([child, skill])
         db.flush()
 
-        attempt = Attempt(child_id=child.id, skill_id=skill.id, difficulty=1, correct=True)
+        attempt = Attempt(
+            child_id=child.id,
+            skill_id=skill.id,
+            difficulty=1,
+            operand_a=3,
+            operand_b=4,
+            correct=True,
+        )
         db.add(attempt)
         db.commit()
 
