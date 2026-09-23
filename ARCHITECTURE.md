@@ -55,7 +55,9 @@ decision below; update the resume text to match once this ships.)
 | Local DB dev | Docker Compose | Wired up in increment 2 |
 | App hosting | **Fly.io** (backend) | Decided this session |
 | Frontend hosting | Vercel | Carried over from original plan, not revisited |
-| LLM provider | **Gemini API** | Switched from OpenAI this session — free tier. Used only for wrong-answer explanations/encouragement, kept out of the grading path (arithmetic correctness stays deterministic) |
+| LLM provider | **Gemini API** via `google-genai` | Switched from OpenAI in an earlier session — free tier. `google-generativeai` (the original scaffold's pick) is the now-superseded SDK; `google-genai` (`from google import genai`) is current, confirmed increment 8. Used only for wrong-answer explanations/encouragement (`app/llm.py`), kept out of the grading path — arithmetic correctness stays deterministic, and any Gemini failure degrades to "no explanation this time," never a failed request. |
+| Rate limiting | slowapi, per-IP, `20/minute` on `POST /attempts/{id}/answer` | Bounds free-tier Gemini cost/quota exposure. `key_style="endpoint"` (not slowapi's default `"url"`) — the default buckets by literal resolved path, so a route with a path param like `{attempt_id}` never accumulates a shared count. In-memory storage, single-instance only; a multi-instance deploy needs a shared store (Redis) — not needed yet. Added increment 8. |
+| Error handling | Global exception handler (`app/main.py`) + per-call server-side logging | Any unhandled exception returns a generic `{"detail": "Something went wrong..."}` (500) to the client — never a message, exception type, or traceback. Full detail goes to server logs only (`app/logging_config.py`, stdout — Fly.io captures it natively). Deliberate `HTTPException`s (404/400/409) are unaffected; only genuinely unexpected failures are caught. Added increment 8, but applies API-wide. |
 | Adaptivity engine | Rules-based now → Bayesian Knowledge Tracing later | Start with rolling-accuracy difficulty adjustment (increment 5), upgrade to BKT (increment 11) |
 | CI | GitHub Actions | Set up in increment 1 |
 
@@ -81,14 +83,15 @@ commits — Claude stages changes but does not commit.
 7. **Frontend adaptivity wiring** — full loop: child answers → backend
    updates mastery → next problem reflects it, rendered live. ✅ **Done**
 8. **LLM explanation layer** — Gemini integration for wrong-answer
-   explanations/encouragement, decoupled from the grading path. 🔶 **Current**
-   🌐 **Needs a Gemini API key** (Google AI Studio, free tier) before this
-   increment can run.
+   explanations/encouragement, decoupled from the grading path. ✅ **Done**
+   — plus rate limiting (`20/minute`/IP) and a global secure error handler,
+   both pulled forward into this increment since the Gemini call was the
+   trigger for needing them.
 9. **Parent dashboard API + parent auth** — endpoints exposing per-child
    progress/mastery summaries and session history, plus parent account
    creation and password-based login (hashed passwords, session/token
    auth). This closes the "no auth" gap noted above — real per-child data
-   shouldn't be exposed unauthenticated.
+   shouldn't be exposed unauthenticated. 🔶 **Current**
 10. **Parent dashboard UI** — React view rendering progress per skill,
     behind the login from increment 9.
 11. **Bayesian Knowledge Tracing upgrade** — replace/augment the rules-based
@@ -113,10 +116,13 @@ commits — Claude stages changes but does not commit.
   folded into the parent dashboard API's scope (parent accounts, hashed
   passwords via `passlib`/`argon2`, session/token auth) rather than a
   separate numbered increment.
-- **No rate limiting yet.** Not needed while there's no public deployment
-  and no expensive calls (increment 8's Gemini calls are the first real
-  cost/abuse surface). Add it alongside increment 8, and again at increment
-  12's public deploy.
+- **Rate limiting covers one endpoint, not the whole API.** Added in
+  increment 8, scoped deliberately to `POST /attempts/{id}/answer` (the one
+  that calls Gemini) per explicit request — `POST /children` and
+  `POST /children/{id}/problems` are still unlimited. Fine pre-deploy (no
+  external cost on those calls, just DB writes); revisit at increment 12's
+  public deploy, where any unauthenticated endpoint is a target regardless
+  of whether it costs money.
 - **Answer grading trusts the server, not the client.** When a problem is
   served (`POST /children/{id}/problems`), the operands are persisted to the
   `attempt` row immediately; grading (`POST /attempts/{id}/answer`) checks
@@ -138,6 +144,31 @@ commits — Claude stages changes but does not commit.
   atomic at the database level. See `app/mastery_repo.py` and
   `tests/integration/test_mastery_repo.py` for the deterministic
   (lock-based, not timing-based) regression test.
+- **slowapi rate limiting silently did nothing on first implementation.**
+  slowapi's default `key_style="url"` buckets by the literal resolved
+  request path. `POST /attempts/{attempt_id}/answer` has a different
+  `attempt_id` on every call, so every request landed in a brand-new bucket
+  and the count never accumulated — 21 rapid requests all returned 200, no
+  error, nothing obviously wrong. Only caught because the increment 8 tests
+  asserted the actual 429 behavior instead of just checking the decorator
+  was present. Fixed with `key_style="endpoint"` (`app/rate_limit.py`).
+  Worth remembering for any future rate-limited route with a path
+  parameter — the failure mode is silent, not a crash.
+- **Gemini responses were silently truncated to a few words.** `gemini-flash-latest`
+  spends output tokens on an internal "thinking" pass before the visible
+  answer, and those thinking tokens draw from the same `max_output_tokens`
+  budget — with the original `max_output_tokens=80`, thinking alone (77
+  tokens, confirmed via `response.usage_metadata.thoughts_token_count`) left
+  almost nothing for the actual reply, so `finish_reason` came back
+  `MAX_TOKENS` and `response.text` was sometimes `None` outright. Caught by
+  manually testing with a real key, not by the test suite (which mocks the
+  client). Fixed with `thinking_config=types.ThinkingConfig(thinking_budget=0)`
+  plus raising the budget to `200` as headroom, since a `0` thinking budget
+  didn't fully zero out thinking-token usage in practice. `app/llm.py` also
+  now logs a warning (with `finish_reason`) if `response.text` is ever empty
+  again, so a regression shows up in logs instead of silently degrading.
+  See `tests/unit/test_llm.py` for the regression tests pinning both the
+  empty-text handling and the config values themselves.
 - **Portfolio-level design collision, caught and fixed this session.** The
   first frontend theme ("Illuminated Primer") independently converged on the
   same visual territory as Reflectory (another project on the same resume):

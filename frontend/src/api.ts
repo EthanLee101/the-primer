@@ -24,9 +24,10 @@ export interface Problem {
 export interface AnswerResult {
   correct: boolean;
   correct_answer: number;
+  explanation: string | null;
 }
 
-class ApiError extends Error {}
+export class ApiError extends Error {}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {

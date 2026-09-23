@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { fetchProblem, submitAnswer, type Problem, type SkillCode } from "../api";
+import { ApiError, fetchProblem, submitAnswer, type Problem, type SkillCode } from "../api";
 import styles from "./ProblemView.module.css";
 
 interface ProblemViewProps {
@@ -12,6 +12,13 @@ interface ProblemViewProps {
 interface Feedback {
   correct: boolean;
   correctAnswer: number;
+  explanation: string | null;
+}
+
+function describeError(err: unknown): string {
+  // ApiError carries the server's own detail message (e.g. a rate-limit
+  // notice) — worth showing as-is rather than a generic fallback
+  return err instanceof ApiError ? err.message : "Couldn't reach the Primer. Is the backend running?";
 }
 
 // mirrors app/mastery.py's MAX_DIFFICULTY — display-only, so a hardcoded
@@ -49,8 +56,8 @@ export function ProblemView({ childId, skill, onChangeSkill }: ProblemViewProps)
       try {
         const next = await fetchProblem(childId, skill);
         if (!signal.aborted) setProblem(next);
-      } catch {
-        if (!signal.aborted) setError("Couldn't reach the Primer. Is the backend running?");
+      } catch (err) {
+        if (!signal.aborted) setError(describeError(err));
       }
     },
     [childId, skill],
@@ -73,9 +80,13 @@ export function ProblemView({ childId, skill, onChangeSkill }: ProblemViewProps)
     setError(null);
     try {
       const result = await submitAnswer(problem.attempt_id, Number(answer));
-      setFeedback({ correct: result.correct, correctAnswer: result.correct_answer });
-    } catch {
-      setError("Couldn't reach the Primer. Is the backend running?");
+      setFeedback({
+        correct: result.correct,
+        correctAnswer: result.correct_answer,
+        explanation: result.explanation,
+      });
+    } catch (err) {
+      setError(describeError(err));
     } finally {
       setSubmitting(false);
     }
@@ -138,7 +149,8 @@ export function ProblemView({ childId, skill, onChangeSkill }: ProblemViewProps)
                 >
                   {feedback.correct
                     ? "Wonderful!"
-                    : `Not quite — the answer was ${feedback.correctAnswer}.`}
+                    : (feedback.explanation ??
+                      `Not quite — the answer was ${feedback.correctAnswer}.`)}
                 </p>
                 <button
                   className={styles.nextButton}

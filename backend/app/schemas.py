@@ -31,3 +31,6 @@ class AnswerSubmit(BaseModel):
 class AnswerResult(BaseModel):
     correct: bool
     correct_answer: int
+    # only ever set on a wrong answer; None if correct, or if the LLM call
+    # failed (a missing explanation is never itself an error — see app/llm.py)
+    explanation: str | None = None

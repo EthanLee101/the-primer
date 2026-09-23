@@ -40,7 +40,10 @@ def test_full_problem_and_answer_flow(child_id: int) -> None:
         json={"submitted_answer": correct_answer},
     )
     assert response.status_code == 200
-    assert response.json() == {"correct": True, "correct_answer": correct_answer}
+    body = response.json()
+    assert body["correct"] is True
+    assert body["correct_answer"] == correct_answer
+    assert body["explanation"] is None  # no LLM call on a correct answer
 
 
 def test_wrong_answer_is_graded_correctly(child_id: int) -> None:
@@ -52,7 +55,10 @@ def test_wrong_answer_is_graded_correctly(child_id: int) -> None:
         f"/attempts/{problem['attempt_id']}/answer",
         json={"submitted_answer": correct_answer + 1},
     )
-    assert response.json() == {"correct": False, "correct_answer": correct_answer}
+    body = response.json()
+    assert body["correct"] is False
+    assert body["correct_answer"] == correct_answer
+    assert body["explanation"] is not None  # fake provider still returns something in tests
 
 
 def test_cannot_answer_same_attempt_twice(child_id: int) -> None:

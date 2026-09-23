@@ -1,21 +1,31 @@
+import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db import get_db
+from app.llm import generate_explanation
 from app.mastery import apply_attempt
 from app.mastery_repo import apply_state, get_or_create_mastery, to_state
 from app.models import Attempt
-from app.problems import SKILL_OPERATIONS, grade
+from app.problems import SKILL_OPERATIONS, format_prompt, grade
+from app.rate_limit import limiter
 from app.schemas import AnswerResult, AnswerSubmit
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/attempts", tags=["attempts"])
 
 
 @router.post("/{attempt_id}/answer", response_model=AnswerResult)
+@limiter.limit(get_settings().answer_rate_limit)
 def submit_answer(
-    attempt_id: int, payload: AnswerSubmit, db: Session = Depends(get_db)
+    request: Request,
+    attempt_id: int,
+    payload: AnswerSubmit,
+    db: Session = Depends(get_db),
 ) -> AnswerResult:
     attempt = db.get(Attempt, attempt_id)
     if attempt is None:
@@ -25,7 +35,10 @@ def submit_answer(
 
     operation = SKILL_OPERATIONS.get(attempt.skill.code)
     if operation is None:
-        raise HTTPException(status_code=500, detail=f"unrecognized skill: {attempt.skill.code}")
+        # a seeded skill row with a code we don't recognize is a data
+        # consistency bug, not something to expose to the client
+        logger.error("attempt %d has unrecognized skill code: %s", attempt_id, attempt.skill.code)
+        raise HTTPException(status_code=500, detail="Something went wrong. Please try again.")
 
     correct_answer = grade(attempt.operand_a, attempt.operand_b, operation)
     is_correct = payload.submitted_answer == correct_answer
@@ -39,4 +52,9 @@ def submit_answer(
 
     db.commit()
 
-    return AnswerResult(correct=is_correct, correct_answer=correct_answer)
+    explanation = None
+    if not is_correct:
+        prompt = format_prompt(attempt.operand_a, attempt.operand_b, operation)
+        explanation = generate_explanation(prompt, payload.submitted_answer, correct_answer)
+
+    return AnswerResult(correct=is_correct, correct_answer=correct_answer, explanation=explanation)

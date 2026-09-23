@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     # explicit allowlist, never "*" — the frontend runs on its own origin/port
     cors_origins: list[str] = ["http://localhost:5173"]
+    # per-IP; the endpoint that calls Gemini. Generous for real practice
+    # (a kid isn't organically answering faster than this), tight enough to
+    # bound worst-case free-tier quota/cost exposure from a runaway client.
+    answer_rate_limit: str = "20/minute"
 
 
 @lru_cache

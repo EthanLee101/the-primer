@@ -39,6 +39,21 @@ uvicorn app.main:app --reload
 curl localhost:8000/health
 ```
 
+## LLM explanations (Gemini)
+
+`.env`'s `LLM_PROVIDER` defaults to `fake` — deterministic, no network call,
+no API key needed. To try real Gemini-generated explanations manually:
+
+```bash
+# in .env
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=<your key from Google AI Studio>
+```
+
+The automated test suite always forces `LLM_PROVIDER=fake` regardless of
+`.env` (see `tests/conftest.py`), so running `pytest` never makes real,
+billed API calls even with a real key configured for manual testing.
+
 ## Test
 
 ```bash

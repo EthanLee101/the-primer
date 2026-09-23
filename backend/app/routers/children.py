@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -7,6 +9,8 @@ from app.mastery_repo import get_or_create_mastery
 from app.models import Attempt, Child, Skill
 from app.problems import SKILL_OPERATIONS, generate_problem
 from app.schemas import ChildCreate, ChildOut, ProblemOut
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/children", tags=["children"])
 
@@ -31,7 +35,10 @@ def create_problem(child_id: int, skill: str, db: Session = Depends(get_db)) -> 
 
     skill_row = db.scalar(select(Skill).where(Skill.code == skill))
     if skill_row is None:
-        raise HTTPException(status_code=500, detail=f"skill '{skill}' has no seeded row")
+        # a skill recognized by SKILL_OPERATIONS but missing its seeded row is
+        # a data consistency bug, not something to expose to the client
+        logger.error("skill '%s' is a known skill code but has no seeded row", skill)
+        raise HTTPException(status_code=500, detail="Something went wrong. Please try again.")
 
     mastery = get_or_create_mastery(db, child.id, skill_row.id)
     problem = generate_problem(skill, mastery.difficulty)

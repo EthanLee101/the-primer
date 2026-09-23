@@ -43,8 +43,12 @@ class Problem:
 
     @property
     def prompt(self) -> str:
-        symbol = _OPERATION_SYMBOLS[self.operation]
-        return f"{self.operand_a} {symbol} {self.operand_b}"
+        return format_prompt(self.operand_a, self.operand_b, self.operation)
+
+
+def format_prompt(operand_a: int, operand_b: int, operation: Operation) -> str:
+    symbol = _OPERATION_SYMBOLS[operation]
+    return f"{operand_a} {symbol} {operand_b}"
 
 
 def grade(operand_a: int, operand_b: int, operation: Operation) -> int:
