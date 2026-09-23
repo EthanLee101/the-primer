@@ -95,11 +95,11 @@ metric/action per view, not a wall of equal-weight cards.
 1]`. Wrong-answer feedback: `x: [0, -6, 6, 0]` shake. Bead fill: scale-in
 per bead with a small `i * 0.02s` cascade delay, not simultaneous.
 
-## Parent dashboard — "Blueprint Primer" (reserved, not yet built)
+## Parent dashboard — "Blueprint Primer" (built, increment 10)
 
-For increment 9/10. Deliberately further from the child view than
-originally planned, so the two registers read as genuinely different
-rooms in the same house, not the same screen with a different hat.
+Deliberately further from the child view than originally planned, so the
+two registers read as genuinely different rooms in the same house, not
+the same screen with a different hat.
 
 - **Direction:** a naturalist's field journal crossed with an engineering
   blueprint — the technical, neo-Victorian half of *The Diamond Age*'s
@@ -115,6 +115,19 @@ rooms in the same house, not the same screen with a different hat.
   hand-drawn corner brackets (`::before`/`::after`, 2px `var(--copper)`
   L-shapes), like museum labels, on a fine blueprint-grid background
   (`28px` line grid, low-opacity teal lines).
-- Build the formal type-scale ratio here first (see gap noted above) —
-  this view needs real density (per-skill mastery rows, session history),
-  which the child view never tested.
+- **Type scale (built):** 1.25 ratio from a 14px base — `--text-caption:
+  11px`, `--text-body: 14px`, `--text-h4: 16px`, `--text-h3: 18px`,
+  `--text-h2: 22px`, `--text-h1: 28px`, `--text-display: 40px`. The child
+  view still doesn't have one (ad hoc `clamp()` sizes per component are
+  enough for four simple screens); use this scale as the template if the
+  child view ever needs real density too.
+- **Scoping mechanism:** `body[data-theme="parent"]` in `theme.css`,
+  toggled by a `useEffect` in `App.tsx` setting `document.body.dataset.theme`
+  — not a wrapper `<div>` with a class. This lets the parent theme's rules
+  fully override the child theme's body-level background and grain texture
+  instead of layering a second texture visually on top of the first (tried
+  the wrapper-div approach first; it didn't fully override `body::before`,
+  so both textures rendered at once).
+- **Components:** `ParentAuth` (login/register, tabbed), `ParentDashboard`
+  (per-child specimen cards: a mastery table + a recent-sessions list).
+  Both under `src/components/parent/`.

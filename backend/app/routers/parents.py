@@ -73,7 +73,14 @@ def my_children(
         masteries = db.scalars(select(Mastery).where(Mastery.child_id == child.id)).all()
         recent = db.scalars(
             select(Attempt)
-            .where(Attempt.child_id == child.id)
+            # answered only — a served-but-never-answered attempt (a child
+            # switches skills mid-problem, closes the tab, or — in dev —
+            # React StrictMode double-firing the "serve a problem" effect)
+            # has correct=None, which a naive "correct ? right : wrong"
+            # display would show as a false "wrong answer." Confirmed live:
+            # StrictMode's double effect really does create two Attempt rows
+            # server-side even though the client only ever displays one.
+            .where(Attempt.child_id == child.id, Attempt.answered_at.is_not(None))
             .order_by(Attempt.created_at.desc())
             .limit(10)
         ).all()

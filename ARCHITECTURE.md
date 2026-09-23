@@ -48,7 +48,7 @@ decision below; update the resume text to match once this ships.)
 |---|---|---|
 | Frontend | React + TypeScript (Vite) | Minimal, large-target child UI; separate parent dashboard view |
 | Frontend theme (child view) | "Counting Blocks" | Superseded the original "Illuminated Primer" theme (warm dark ink/gold), which turned out to look too close to another resume project (Reflectory: dark brown bg, gold accent, literary serif, glow) — see Known gaps below. Now: light oat/linen bg (`#ece3cf`), birch-tan panels (`#dcc9a0`), Montessori counting-block palette (cherry red action, ochre-gold mastery/progress, moss green correct-feedback). Baloo 2 (display, chunky/rounded — built for a child's hand) + Atkinson Hyperlegible (body, kept from the original direction — a reading tool set in a typeface built for reading clarity, unrelated to the collision). Signature element: difficulty renders as a physical bead rail (filled dots), not a text label. No glow, no dark mode. |
-| Frontend theme (parent dashboard) | "Blueprint Primer" (reserved) | Not yet built (increment 9/10). Cream + deep-teal + copper, technical field-journal aesthetic — condensed caps + monospace numerals, blueprint grid, specimen-card corner brackets. Deliberately further from the child view than originally planned, to give the two registers real visual distance. |
+| Frontend theme (parent dashboard) | "Blueprint Primer" | Built increment 10. Cream (`#efe6d3`) + deep-teal (`#1f5c52`) + copper (`#c1622f`) — a clean break from the child theme's palette, not a tint of it. Big Shoulders (condensed caps) + Spline Sans Mono (data/numerals) + Atkinson Hyperlegible (body, the one thread shared with the child view). Specimen-card corner brackets, blueprint-grid background. First view with a real type scale (1.25 ratio, `--text-caption` … `--text-display` custom properties) — the child view's ad hoc sizes were enough for four simple screens, this one needed genuine density control for per-skill rows and session history. Scoped via `body[data-theme="parent"]`, toggled by a `useEffect` in `App.tsx`, not a wrapper class — lets it fully override the child theme's body-level background/grain instead of layering on top. |
 | Backend | Python + FastAPI | Chosen over Node/Express so the adaptivity model can grow into real ML (BKT, scikit-learn) |
 | Database | PostgreSQL | Relational fit: children → skills → attempts |
 | DB hosting | **Neon** | Decided this session |
@@ -94,9 +94,11 @@ commits — Claude stages changes but does not commit.
    auth). This closes the "no auth" gap noted above — real per-child data
    shouldn't be exposed unauthenticated. ✅ **Done**
 10. **Parent dashboard UI** — React view rendering progress per skill,
-    behind the login from increment 9. 🔶 **Current**
+    behind the login from increment 9. ✅ **Done** — plus a same-device
+    "claim this child" flow (new `POST /children/{id}/claim` endpoint) to
+    link children created before the parent had an account.
 11. **Bayesian Knowledge Tracing upgrade** — replace/augment the rules-based
-    engine with a BKT mastery-probability model.
+    engine with a BKT mastery-probability model. 🔶 **Current**
 12. **Deployment & polish** — backend → Fly.io, DB → Neon, frontend →
     Vercel; secrets/env config; stretch (second skill domain / theming) if
     time allows.
@@ -119,11 +121,14 @@ commits — Claude stages changes but does not commit.
   access control — anyone who has or guesses an ID can play as that child.
   Deliberate for now: those endpoints need to stay usable with zero login
   friction for the child-facing flow (increments 6/7), and nothing sensitive
-  is exposed through them (arithmetic practice, not personal data). A child
-  only gets linked to a parent, and thus visible on that parent's dashboard,
-  when created while a parent's token is active — revisit whether that
-  linking (or stronger child-endpoint scoping) needs to be mandatory once
-  increment 10 adds a real login UI and this stops being purely additive.
+  is exposed through them (arithmetic practice, not personal data). Increment
+  10 added same-device claiming (`POST /children/{id}/claim`, plus the
+  dashboard's "link this child" prompt), which closes the *linking* half of
+  this gap for the common case — but claiming is still voluntary, and a
+  child device is still fully playable by anyone with the URL, forever,
+  whether or not it's ever claimed. Revisit whether stronger scoping should
+  be mandatory once there's a real reason to (e.g. a public deploy where
+  this matters more than it does on localhost).
 - **Rate limiting covers one endpoint, not the whole API.** Added in
   increment 8, scoped deliberately to `POST /attempts/{id}/answer` (the one
   that calls Gemini) per explicit request — `POST /children` and
@@ -198,6 +203,24 @@ commits — Claude stages changes but does not commit.
   (`alembic/versions/80dc1c5f6a75_*.py`) and verified both directions with a
   real `alembic downgrade -1` / `upgrade head` round trip, not just a read
   of the generated file.
+- **Parent dashboard showed a false "wrong answer" for a problem the child
+  never actually answered.** Caught visually in a real browser run, not by
+  any automated test. `GET /parents/me/children`'s recent-attempts query
+  pulled every `Attempt` row for a child regardless of whether it had been
+  answered; the frontend rendered `attempt.correct ? correct : wrong`,
+  which treats `correct: None` (served, never answered) the same as
+  `False`. The unanswered row existed because React StrictMode's
+  intentional double-effect-fire in dev (the same mechanism behind the
+  increment-5 mastery race) sent two "serve a problem" requests on mount —
+  confirmed by querying the actual `attempt` rows directly
+  (`operand_a=2, operand_b=6, submitted_answer=None, answered_at=None`)
+  before assuming a cause. This isn't only a dev-mode artifact either: a
+  child abandoning a problem mid-session (closes the tab, switches skill)
+  produces the same shape of row in production. Fixed by filtering the
+  query to `Attempt.answered_at.is_not(None)` — "recent sessions" now means
+  "recently completed," which is both the correct fix and the more
+  meaningful thing to show a parent anyway. See
+  `test_recent_attempts_excludes_unanswered_ones`.
 - **Portfolio-level design collision, caught and fixed this session.** The
   first frontend theme ("Illuminated Primer") independently converged on the
   same visual territory as Reflectory (another project on the same resume):

@@ -50,3 +50,49 @@ body::before {
 button {
   font-family: inherit;
 }
+
+/* "Blueprint Primer" — the parent dashboard's register. A deliberately
+   different room from the child view's "Counting Blocks": cream + teal +
+   copper instead of oat + red/gold/green, condensed/mono type instead of
+   rounded display, a blueprint grid instead of linen grain. Toggled via
+   document.body.dataset.theme (see App.tsx) so it can fully override the
+   body-level background/grain rules above, rather than layering a second
+   texture on top of the child theme's. */
+body[data-theme="parent"] {
+  --bg: #efe6d3;
+  --panel: #f6f0e2;
+  --panel-border: #1f5c52;
+  --input-bg: #e6dcc2;
+  --ink: #1f5c52;
+  --ink-muted: #5a7d76;
+  --accent: #c1622f;
+  --gold: #c1622f;
+  --success: #3f7a4a;
+
+  --font-display: "Big Shoulders", system-ui, sans-serif;
+  --font-mono: "Spline Sans Mono", ui-monospace, monospace;
+  --font-body: "Atkinson Hyperlegible", system-ui, sans-serif;
+
+  /* a real type scale (1.25 ratio from a 14px base) — the child view never
+     needed one (a handful of large, ad hoc sizes was enough for four
+     screens), but a dashboard with per-skill rows and session history
+     needs genuine density control */
+  --text-caption: 11px;
+  --text-body: 14px;
+  --text-h4: 16px;
+  --text-h3: 18px;
+  --text-h2: 22px;
+  --text-h1: 28px;
+  --text-display: 40px;
+}
+
+body[data-theme="parent"]::before {
+  /* fully redefined, not layered — replaces the linen grain with a
+     blueprint grid rather than showing both at once */
+  opacity: 0.08;
+  mix-blend-mode: normal;
+  background-image:
+    linear-gradient(#1f5c52 1px, transparent 1px),
+    linear-gradient(90deg, #1f5c52 1px, transparent 1px);
+  background-size: 28px 28px;
+}

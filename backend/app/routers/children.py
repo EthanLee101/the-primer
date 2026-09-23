@@ -1,10 +1,11 @@
 import logging
+from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_parent_optional
+from app.auth import get_current_parent, get_current_parent_optional
 from app.db import get_db
 from app.mastery_repo import get_or_create_mastery
 from app.models import Attempt, Child, Parent, Skill
@@ -29,6 +30,36 @@ def create_child(
     db.add(child)
     db.commit()
     db.refresh(child)
+    return child
+
+
+@router.post("/{child_id}/claim", response_model=ChildOut)
+def claim_child(
+    child_id: int, parent: Parent = Depends(get_current_parent), db: Session = Depends(get_db)
+) -> Child:
+    """Links an existing, previously-unowned child (e.g. one created before
+    this parent had an account, or on this device by a kid playing solo) to
+    the authenticated parent. A plain "SELECT then UPDATE if unowned" has the
+    same race the increment-5 mastery bug had — two parents could both pass
+    the check before either commits. This WHERE-conditioned UPDATE is atomic
+    at the database level instead: at most one concurrent request can match
+    parent_id IS NULL and actually update the row."""
+    stmt = (
+        update(Child)
+        .where(Child.id == child_id, Child.parent_id.is_(None))
+        .values(parent_id=parent.id)
+    )
+    result = cast("CursorResult[None]", db.execute(stmt))
+    db.commit()
+
+    child = db.get(Child, child_id)
+    if child is None:
+        raise HTTPException(status_code=404, detail="child not found")
+    if result.rowcount == 0 and child.parent_id != parent.id:
+        # someone else already claimed it — not "already yours," a real conflict
+        raise HTTPException(
+            status_code=409, detail="This child is already linked to another account."
+        )
     return child
 
 

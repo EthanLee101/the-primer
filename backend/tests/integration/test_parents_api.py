@@ -154,3 +154,117 @@ def test_child_creation_without_auth_still_works_and_is_unlinked() -> None:
         assert child.parent_id is None
         db.delete(child)
         db.commit()
+
+
+def test_claim_links_an_unowned_child(cleanup_emails: list[str]) -> None:
+    cleanup_emails.append("claimer@example.com")
+    anon = client.post("/children", json={"name": "solo-kid"})
+    child_id = anon.json()["id"]
+
+    reg = client.post(
+        "/parents", json={"email": "claimer@example.com", "password": "correct horse battery"}
+    )
+    token = reg.json()["access_token"]
+
+    response = client.post(
+        f"/children/{child_id}/claim", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 200
+    assert response.json()["id"] == child_id
+
+    dashboard = client.get("/parents/me/children", headers={"Authorization": f"Bearer {token}"})
+    assert any(c["id"] == child_id for c in dashboard.json())
+
+
+def test_claim_is_idempotent_for_the_same_parent(cleanup_emails: list[str]) -> None:
+    cleanup_emails.append("reclaimer@example.com")
+    anon = client.post("/children", json={"name": "solo-kid-2"})
+    child_id = anon.json()["id"]
+
+    reg = client.post(
+        "/parents", json={"email": "reclaimer@example.com", "password": "correct horse battery"}
+    )
+    token = reg.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = client.post(f"/children/{child_id}/claim", headers=headers)
+    second = client.post(f"/children/{child_id}/claim", headers=headers)
+    assert first.status_code == second.status_code == 200
+
+
+def test_claim_rejects_a_child_already_owned_by_another_parent(cleanup_emails: list[str]) -> None:
+    cleanup_emails.append("owner@example.com")
+    cleanup_emails.append("rival@example.com")
+    anon = client.post("/children", json={"name": "contested-kid"})
+    child_id = anon.json()["id"]
+
+    owner_token = client.post(
+        "/parents", json={"email": "owner@example.com", "password": "correct horse battery"}
+    ).json()["access_token"]
+    rival_token = client.post(
+        "/parents", json={"email": "rival@example.com", "password": "correct horse battery"}
+    ).json()["access_token"]
+
+    client.post(f"/children/{child_id}/claim", headers={"Authorization": f"Bearer {owner_token}"})
+    response = client.post(
+        f"/children/{child_id}/claim", headers={"Authorization": f"Bearer {rival_token}"}
+    )
+    assert response.status_code == 409
+
+
+def test_claim_requires_authentication() -> None:
+    anon = client.post("/children", json={"name": "unauthenticated-claim-target"})
+    response = client.post(f"/children/{anon.json()['id']}/claim")
+    assert response.status_code == 401
+
+    with SessionLocal() as db:
+        child = db.get(Child, anon.json()["id"])
+        assert child is not None
+        db.delete(child)
+        db.commit()
+
+
+def test_claim_nonexistent_child_404s(cleanup_emails: list[str]) -> None:
+    cleanup_emails.append("claim-404@example.com")
+    token = client.post(
+        "/parents", json={"email": "claim-404@example.com", "password": "correct horse battery"}
+    ).json()["access_token"]
+
+    response = client.post(
+        "/children/999999999/claim", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert response.status_code == 404
+
+
+def test_recent_attempts_excludes_unanswered_ones(cleanup_emails: list[str]) -> None:
+    """Regression test: a served-but-never-answered attempt (correct=None,
+    answered_at=None) showed up in a real browser session — React
+    StrictMode's double-effect-fire in dev creates two "serve a problem"
+    requests, and the client only ever displays/answers one, but the server
+    had already committed both. The dashboard used to show the unanswered
+    one as a false "wrong answer" (a naive `correct ? right : wrong` display
+    treats None the same as False). Confirmed with real data via direct DB
+    inspection before fixing."""
+    cleanup_emails.append("unanswered@example.com")
+    token = client.post(
+        "/parents", json={"email": "unanswered@example.com", "password": "correct horse battery"}
+    ).json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    child_id = client.post(
+        "/children", json={"name": "kid"}, headers=headers
+    ).json()["id"]
+
+    # one answered attempt
+    answered = client.post(f"/children/{child_id}/problems", params={"skill": "addition"}).json()
+    client.post(
+        f"/attempts/{answered['attempt_id']}/answer",
+        json={"submitted_answer": answered["operand_a"] + answered["operand_b"]},
+    )
+    # one served but never answered — simulates the StrictMode double-fire
+    client.post(f"/children/{child_id}/problems", params={"skill": "addition"})
+
+    dashboard = client.get("/parents/me/children", headers=headers).json()
+    recent = dashboard[0]["recent_attempts"]
+    assert len(recent) == 1
+    assert all(a["correct"] is not None for a in recent)

@@ -27,12 +27,48 @@ export interface AnswerResult {
   explanation: string | null;
 }
 
+export interface Parent {
+  id: number;
+  email: string;
+  created_at: string;
+}
+
+export interface Session {
+  access_token: string;
+  parent: Parent;
+}
+
+export interface MasterySummary {
+  skill_code: SkillCode;
+  difficulty: number;
+  rolling_accuracy: number | null;
+  attempts_count: number;
+  correct_count: number;
+}
+
+export interface AttemptSummary {
+  skill_code: SkillCode;
+  difficulty: number;
+  correct: boolean | null;
+  created_at: string;
+}
+
+export interface ChildProgress {
+  id: number;
+  name: string;
+  mastery: MasterySummary[];
+  recent_attempts: AttemptSummary[];
+}
+
 export class ApiError extends Error {}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  // spreading ...init after headers would silently drop Content-Type
+  // whenever a caller sets its own headers (e.g. authHeaders) — merge
+  // properly instead so both can be present at once
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...init,
+    headers: { "Content-Type": "application/json", ...init?.headers },
   });
 
   if (!response.ok) {
@@ -65,5 +101,34 @@ export function submitAnswer(attemptId: number, submittedAnswer: number): Promis
   return request<AnswerResult>(`/attempts/${attemptId}/answer`, {
     method: "POST",
     body: JSON.stringify({ submitted_answer: submittedAnswer }),
+  });
+}
+
+function authHeaders(token: string): HeadersInit {
+  return { Authorization: `Bearer ${token}` };
+}
+
+export function registerParent(email: string, password: string): Promise<Session> {
+  return request<Session>("/parents", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function loginParent(email: string, password: string): Promise<Session> {
+  return request<Session>("/parents/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function fetchMyChildren(token: string): Promise<ChildProgress[]> {
+  return request<ChildProgress[]>("/parents/me/children", { headers: authHeaders(token) });
+}
+
+export function claimChild(childId: number, token: string): Promise<Child> {
+  return request<Child>(`/children/${childId}/claim`, {
+    method: "POST",
+    headers: authHeaders(token),
   });
 }
