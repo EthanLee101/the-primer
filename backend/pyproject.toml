@@ -14,6 +14,10 @@ dependencies = [
     # google-generativeai is the older, superseded SDK — google-genai is current.
     "google-genai>=1.0",
     "slowapi>=0.1.9",
+    # Argon2id — OWASP's current top recommendation for password hashing.
+    "argon2-cffi>=23.1",
+    "pyjwt>=2.9",
+    "email-validator>=2.0",
 ]
 
 [project.optional-dependencies]

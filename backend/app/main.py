@@ -9,7 +9,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.config import get_settings
 from app.logging_config import configure_logging
 from app.rate_limit import limiter
-from app.routers import attempts, children
+from app.routers import attempts, children, parents
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_origins,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 app.state.limiter = limiter
@@ -50,6 +50,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 app.include_router(children.router)
 app.include_router(attempts.router)
+app.include_router(parents.router)
 
 
 @app.get("/health")

@@ -54,6 +54,30 @@ The automated test suite always forces `LLM_PROVIDER=fake` regardless of
 `.env` (see `tests/conftest.py`), so running `pytest` never makes real,
 billed API calls even with a real key configured for manual testing.
 
+## Parent accounts
+
+`POST /parents` registers, `POST /parents/login` logs in — both return an
+`access_token` (JWT). Send it as `Authorization: Bearer <token>` on
+`GET /parents/me` and `GET /parents/me/children`. There's no login UI yet
+(that's increment 10); test it directly, e.g.:
+
+```bash
+curl -X POST localhost:8000/parents \
+  -H "Content-Type: application/json" \
+  -d '{"email": "you@example.com", "password": "at least 8 characters"}'
+```
+
+Sessions are bearer tokens, not cookies — see `app/auth.py` for why (short
+version: this API and the frontend are different origins, and cross-origin
+cookies need `SameSite=None`, which disables SameSite's CSRF protection).
+The frontend will hold the token in memory once increment 10 builds the
+login UI, so a page refresh will require logging in again — deliberate,
+not a bug.
+
+Set `JWT_SECRET_KEY` in `.env` before deploying anywhere real — see the
+comment in `.env.example` for why an unset one is fine for local dev but
+not for production.
+
 ## Test
 
 ```bash

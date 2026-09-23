@@ -60,6 +60,7 @@ decision below; update the resume text to match once this ships.)
 | Error handling | Global exception handler (`app/main.py`) + per-call server-side logging | Any unhandled exception returns a generic `{"detail": "Something went wrong..."}` (500) to the client — never a message, exception type, or traceback. Full detail goes to server logs only (`app/logging_config.py`, stdout — Fly.io captures it natively). Deliberate `HTTPException`s (404/400/409) are unaffected; only genuinely unexpected failures are caught. Added increment 8, but applies API-wide. |
 | Adaptivity engine | Rules-based now → Bayesian Knowledge Tracing later | Start with rolling-accuracy difficulty adjustment (increment 5), upgrade to BKT (increment 11) |
 | CI | GitHub Actions | Set up in increment 1 |
+| Parent auth | Argon2id (`argon2-cffi`) + JWT bearer tokens (`pyjwt`) | Argon2id: OWASP's current top password-hashing recommendation. Bearer token over cookies deliberately — cross-origin cookies need `SameSite=None`, which disables CSRF protection; a bearer token sidesteps CSRF entirely since browsers don't auto-attach headers cross-site. Token held in frontend memory only (never `localStorage`) — trade-off: refresh logs the parent out, no persistence yet. `POST /parents` and `POST /parents/login` rate-limited (`5/minute`/IP) against brute-force; login timing/error message identical for "wrong password" and "no such account" (no email enumeration). Added increment 9. |
 
 ## Increment plan
 
@@ -91,9 +92,9 @@ commits — Claude stages changes but does not commit.
    progress/mastery summaries and session history, plus parent account
    creation and password-based login (hashed passwords, session/token
    auth). This closes the "no auth" gap noted above — real per-child data
-   shouldn't be exposed unauthenticated. 🔶 **Current**
+   shouldn't be exposed unauthenticated. ✅ **Done**
 10. **Parent dashboard UI** — React view rendering progress per skill,
-    behind the login from increment 9.
+    behind the login from increment 9. 🔶 **Current**
 11. **Bayesian Knowledge Tracing upgrade** — replace/augment the rules-based
     engine with a BKT mastery-probability model.
 12. **Deployment & polish** — backend → Fly.io, DB → Neon, frontend →
@@ -109,13 +110,20 @@ commits — Claude stages changes but does not commit.
 
 ## Known gaps (tracked, not accidental)
 
-- **No auth yet.** `child_id` and `attempt_id` are plain sequential integers
-  with no access control — anyone who has or guesses an ID can read/answer
-  any child's attempt. Acceptable for now (nothing sensitive at stake, no
-  public deploy yet). Confirmed with the user: this closes in increment 9,
-  folded into the parent dashboard API's scope (parent accounts, hashed
-  passwords via `passlib`/`argon2`, session/token auth) rather than a
-  separate numbered increment.
+- **Parent auth exists (increment 9); child endpoints still don't require it.**
+  `GET /parents/me/children` is properly protected and scoped — verified by
+  a test that two parents each with a linked child cannot see each other's
+  data. But `child_id` and `attempt_id` on the child-facing endpoints
+  (`POST /children`, `POST /children/{id}/problems`,
+  `POST /attempts/{id}/answer`) are still plain sequential integers with no
+  access control — anyone who has or guesses an ID can play as that child.
+  Deliberate for now: those endpoints need to stay usable with zero login
+  friction for the child-facing flow (increments 6/7), and nothing sensitive
+  is exposed through them (arithmetic practice, not personal data). A child
+  only gets linked to a parent, and thus visible on that parent's dashboard,
+  when created while a parent's token is active — revisit whether that
+  linking (or stronger child-endpoint scoping) needs to be mandatory once
+  increment 10 adds a real login UI and this stops being purely additive.
 - **Rate limiting covers one endpoint, not the whole API.** Added in
   increment 8, scoped deliberately to `POST /attempts/{id}/answer` (the one
   that calls Gemini) per explicit request — `POST /children` and
@@ -169,6 +177,27 @@ commits — Claude stages changes but does not commit.
   again, so a regression shows up in logs instead of silently degrading.
   See `tests/unit/test_llm.py` for the regression tests pinning both the
   empty-text handling and the config values themselves.
+- **`JWT_SECRET_KEY=` (present but empty) would have silently signed every
+  token with an empty secret.** `default_factory` (the intended random-key
+  fallback for local dev) only fires when an env var is entirely absent —
+  pydantic-settings takes `KEY=` in `.env` as an explicit empty string and
+  uses it as-is. An empty HMAC key makes every session token trivially
+  forgeable. Fixed with a `field_validator` on `jwt_secret_key` that treats
+  a blank value the same as an absent one, regardless of how `.env` happens
+  to be formatted. See `tests/unit/test_config.py`.
+- **Alembic autogenerate left the new parent→child foreign key unnamed,
+  breaking its own downgrade path.** `op.create_foreign_key(None, ...)` lets
+  Postgres pick a name, and the generated `downgrade()` then calls
+  `op.drop_constraint(None, ...)`, which can't find it — alembic warns about
+  this but still generates the broken migration. Considered fixing it
+  globally with a naming convention on `Base.metadata`, but that made
+  autogenerate want to also rename several unrelated pre-existing
+  constraints (detected as "removed X, added Y" against the live schema) —
+  noise that doesn't belong in a migration about parent accounts. Named just
+  the one new constraint explicitly instead
+  (`alembic/versions/80dc1c5f6a75_*.py`) and verified both directions with a
+  real `alembic downgrade -1` / `upgrade head` round trip, not just a read
+  of the generated file.
 - **Portfolio-level design collision, caught and fixed this session.** The
   first frontend theme ("Illuminated Primer") independently converged on the
   same visual territory as Reflectory (another project on the same resume):

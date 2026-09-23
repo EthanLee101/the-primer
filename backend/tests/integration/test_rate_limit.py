@@ -61,3 +61,19 @@ def test_rate_limit_response_does_not_leak_internals(child_id: int) -> None:
     response = client.post(f"/attempts/{attempt_ids[-1]}/answer", json={"submitted_answer": 0})
     assert response.status_code == 429
     assert response.json() == {"detail": "Too many requests. Please wait a moment and try again."}
+
+
+def test_login_endpoint_enforces_rate_limit() -> None:
+    limit = int(get_settings().auth_rate_limit.split("/")[0])
+
+    statuses = [
+        client.post(
+            "/parents/login", json={"email": "nobody@example.com", "password": "wrong password"}
+        ).status_code
+        for _ in range(limit + 1)
+    ]
+
+    # every one of these logins was invalid (401) except the last, which
+    # should be blocked by the rate limiter before credentials are even checked
+    assert statuses.count(401) == limit
+    assert statuses[-1] == 429

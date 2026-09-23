@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_parent_optional
 from app.db import get_db
 from app.mastery_repo import get_or_create_mastery
-from app.models import Attempt, Child, Skill
+from app.models import Attempt, Child, Parent, Skill
 from app.problems import SKILL_OPERATIONS, generate_problem
 from app.schemas import ChildCreate, ChildOut, ProblemOut
 
@@ -16,8 +17,15 @@ router = APIRouter(prefix="/children", tags=["children"])
 
 
 @router.post("", response_model=ChildOut, status_code=201)
-def create_child(payload: ChildCreate, db: Session = Depends(get_db)) -> Child:
-    child = Child(name=payload.name)
+def create_child(
+    payload: ChildCreate,
+    db: Session = Depends(get_db),
+    parent: Parent | None = Depends(get_current_parent_optional),
+) -> Child:
+    # no auth required — the child-facing flow (increments 6/7) stays
+    # frictionless. If a parent session happens to be active (increment 10's
+    # dashboard), the new child links to it; otherwise parent_id stays null.
+    child = Child(name=payload.name, parent_id=parent.id if parent else None)
     db.add(child)
     db.commit()
     db.refresh(child)

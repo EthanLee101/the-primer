@@ -7,13 +7,29 @@ from app.db import Base
 from app.mastery import INITIAL_DIFFICULTY
 
 
+class Parent(Base):
+    __tablename__ = "parent"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    children: Mapped[list["Child"]] = relationship(back_populates="parent")
+
+
 class Child(Base):
     __tablename__ = "child"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
+    # nullable: children created through the existing unauthenticated
+    # "what's your name?" flow (increments 6/7) have no parent account yet —
+    # only children created while a parent session is active get linked
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("parent.id"), default=None)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
+    parent: Mapped["Parent | None"] = relationship(back_populates="children")
     attempts: Mapped[list["Attempt"]] = relationship(back_populates="child")
 
 

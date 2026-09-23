@@ -9,6 +9,7 @@ from app.models import (  # noqa: F401  (register models on Base.metadata)
     Attempt,
     Child,
     Mastery,
+    Parent,
     Skill,
 )
 
