@@ -12,8 +12,15 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://primer:primer@localhost:5432/primer"
     llm_provider: Literal["gemini", "fake"] = "fake"
     gemini_api_key: str | None = None
-    # explicit allowlist, never "*" — the frontend runs on its own origin/port
-    cors_origins: list[str] = ["http://localhost:5173"]
+    # explicit allowlist, never "*" — the frontend runs on its own origin/port.
+    # localhost/127.0.0.1 are different origins to the browser, and Vite falls
+    # back to the next free port, so both host forms and a couple of ports are listed.
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ]
     # per-IP; the endpoint that calls Gemini. Generous for real practice
     # (a kid isn't organically answering faster than this), tight enough to
     # bound worst-case free-tier quota/cost exposure from a runaway client.
