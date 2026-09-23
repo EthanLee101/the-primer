@@ -68,9 +68,9 @@ commits — Claude stages changes but does not commit.
    skill, attempt tables), local Postgres via Docker wired up, Neon
    connection config for later deploy. ✅ **Done**
 3. **Deterministic arithmetic problem generator** — pure Python, difficulty-
-   parameterized, unit tested, no DB/LLM dependency yet. 🔶 **Current**
+   parameterized, unit tested, no DB/LLM dependency yet. ✅ **Done**
 4. **Core API endpoints** — serve a problem / submit an answer, wired to DB
-   for attempt logging, fixed difficulty (adaptivity comes next).
+   for attempt logging, fixed difficulty (adaptivity comes next). 🔶 **Current**
 5. **Rules-based mastery/difficulty engine** — per-skill mastery + rolling
    accuracy, persisted per child, drives next-problem difficulty.
 6. **React frontend scaffold** — Vite + TypeScript, minimal child-facing UI
