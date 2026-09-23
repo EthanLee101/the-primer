@@ -20,6 +20,18 @@ cp .env.example .env
 docker compose up -d
 ```
 
+## Database migrations
+
+Schema is managed with Alembic. Models live in `app/models.py`.
+
+```bash
+alembic upgrade head                              # apply migrations
+alembic revision --autogenerate -m "description"  # generate a new one after model changes
+```
+
+In production, `DATABASE_URL` points at Neon instead of the local Docker
+container — see `.env.example` for the connection string format.
+
 ## Run the API
 
 ```bash

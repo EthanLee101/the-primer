@@ -50,7 +50,7 @@ decision below; update the resume text to match once this ships.)
 | Backend | Python + FastAPI | Chosen over Node/Express so the adaptivity model can grow into real ML (BKT, scikit-learn) |
 | Database | PostgreSQL | Relational fit: children → skills → attempts |
 | DB hosting | **Neon** | Decided this session |
-| Local DB dev | Docker Compose | In progress as part of increment 2 |
+| Local DB dev | Docker Compose | Wired up in increment 2 |
 | App hosting | **Fly.io** (backend) | Decided this session |
 | Frontend hosting | Vercel | Carried over from original plan, not revisited |
 | LLM provider | **Gemini API** | Switched from OpenAI this session — free tier. Used only for wrong-answer explanations/encouragement, kept out of the grading path (arithmetic correctness stays deterministic) |
@@ -66,9 +66,9 @@ commits — Claude stages changes but does not commit.
    GitHub Actions CI, health check endpoint. ✅ **Done** (`de09e67`)
 2. **Database layer** — SQLAlchemy models + Alembic migrations (child,
    skill, attempt tables), local Postgres via Docker wired up, Neon
-   connection config for later deploy. 🔶 **Current**
+   connection config for later deploy. ✅ **Done**
 3. **Deterministic arithmetic problem generator** — pure Python, difficulty-
-   parameterized, unit tested, no DB/LLM dependency yet.
+   parameterized, unit tested, no DB/LLM dependency yet. 🔶 **Current**
 4. **Core API endpoints** — serve a problem / submit an answer, wired to DB
    for attempt logging, fixed difficulty (adaptivity comes next).
 5. **Rules-based mastery/difficulty engine** — per-skill mastery + rolling
