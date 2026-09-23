@@ -1,0 +1,52 @@
+/* "Counting Blocks" — Montessori-materials palette: light linen, birch-wood
+   panels, and bead colors used with intention (red = action, gold = mastery
+   progress, green = correct). Deliberately light-mode, no glow — the
+   opposite treatment of a "warm dark + glowing accent" AI-companion look. */
+:root {
+  --bg: #ece3cf;
+  --panel: #dcc9a0;
+  --panel-border: #b89c68;
+  --input-bg: #cdb787;
+  --ink: #3a2e1f;
+  --ink-muted: #7a6a4d;
+  --accent: #c1503f;
+  --gold: #c9932f;
+  --success: #4f7a4a;
+
+  --font-display: "Baloo 2", system-ui, sans-serif;
+  --font-body: "Atkinson Hyperlegible", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: var(--bg);
+  min-height: 100vh;
+  position: relative;
+}
+
+/* linen-weave texture, CSS-only via an inline SVG noise filter — no image asset */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+button {
+  font-family: inherit;
+}

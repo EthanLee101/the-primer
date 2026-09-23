@@ -47,6 +47,8 @@ decision below; update the resume text to match once this ships.)
 | Area | Choice | Notes |
 |---|---|---|
 | Frontend | React + TypeScript (Vite) | Minimal, large-target child UI; separate parent dashboard view |
+| Frontend theme (child view) | "Counting Blocks" | Superseded the original "Illuminated Primer" theme (warm dark ink/gold), which turned out to look too close to another resume project (Reflectory: dark brown bg, gold accent, literary serif, glow) — see Known gaps below. Now: light oat/linen bg (`#ece3cf`), birch-tan panels (`#dcc9a0`), Montessori counting-block palette (cherry red action, ochre-gold mastery/progress, moss green correct-feedback). Baloo 2 (display, chunky/rounded — built for a child's hand) + Atkinson Hyperlegible (body, kept from the original direction — a reading tool set in a typeface built for reading clarity, unrelated to the collision). Signature element: difficulty renders as a physical bead rail (filled dots), not a text label. No glow, no dark mode. |
+| Frontend theme (parent dashboard) | "Blueprint Primer" (reserved) | Not yet built (increment 9/10). Cream + deep-teal + copper, technical field-journal aesthetic — condensed caps + monospace numerals, blueprint grid, specimen-card corner brackets. Deliberately further from the child view than originally planned, to give the two registers real visual distance. |
 | Backend | Python + FastAPI | Chosen over Node/Express so the adaptivity model can grow into real ML (BKT, scikit-learn) |
 | Database | PostgreSQL | Relational fit: children → skills → attempts |
 | DB hosting | **Neon** | Decided this session |
@@ -75,11 +77,11 @@ commits — Claude stages changes but does not commit.
    accuracy, persisted per child, drives next-problem difficulty. ✅ **Done**
 6. **React frontend scaffold** — Vite + TypeScript, minimal child-facing UI
    (problem display, answer input, immediate feedback) hitting the API.
-   🔶 **Current**
+   ✅ **Done** — built together with increment 7 (see below)
 7. **Frontend adaptivity wiring** — full loop: child answers → backend
-   updates mastery → next problem reflects it, rendered live.
+   updates mastery → next problem reflects it, rendered live. ✅ **Done**
 8. **LLM explanation layer** — Gemini integration for wrong-answer
-   explanations/encouragement, decoupled from the grading path.
+   explanations/encouragement, decoupled from the grading path. 🔶 **Current**
    🌐 **Needs a Gemini API key** (Google AI Studio, free tier) before this
    increment can run.
 9. **Parent dashboard API + parent auth** — endpoints exposing per-child
@@ -122,6 +124,30 @@ commits — Claude stages changes but does not commit.
   client sends back. This was a deliberate call in increment 4 to avoid
   trusting client-supplied grading inputs, even though the current stakes
   (a kid answering their own practice problem) are low.
+- **CORS is an explicit allowlist, not `"*"`.** `Settings.cors_origins`
+  (`app/config.py`) defaults to `http://localhost:5173`. When the frontend
+  deploys to Vercel (increment 12), its production URL needs adding to
+  `CORS_ORIGINS` in the deployed backend's env — easy to forget since local
+  dev will keep working fine without it.
+- **Fixed, found, and regression-tested this session:** `get_or_create_mastery`
+  had a race condition (SELECT-then-INSERT) that could raise a
+  `UniqueViolation` under concurrent requests for a brand-new (child, skill)
+  pair — caught by actually running the app in a browser (React StrictMode's
+  intentional double-effect-invocation in dev surfaced it immediately).
+  Fixed with a Postgres `INSERT ... ON CONFLICT DO NOTHING` upsert, which is
+  atomic at the database level. See `app/mastery_repo.py` and
+  `tests/integration/test_mastery_repo.py` for the deterministic
+  (lock-based, not timing-based) regression test.
+- **Portfolio-level design collision, caught and fixed this session.** The
+  first frontend theme ("Illuminated Primer") independently converged on the
+  same visual territory as Reflectory (another project on the same resume):
+  warm dark background, gold/amber glow, literary serif. Root cause: that
+  combination is a common default for "AI companion app," not something
+  specific to this product — the same failure mode as purple gradients being
+  the default for generic SaaS. Replaced with "Counting Blocks" (see tech
+  stack table). Worth remembering for the parent dashboard and any future
+  visual work: check against Reflectory's actual look before committing to a
+  direction, not just against generic AI-slop patterns.
 
 ## Working agreement
 

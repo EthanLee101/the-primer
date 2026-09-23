@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://primer:primer@localhost:5432/primer"
     llm_provider: Literal["gemini", "fake"] = "fake"
     gemini_api_key: str | None = None
+    # explicit allowlist, never "*" — the frontend runs on its own origin/port
+    cors_origins: list[str] = ["http://localhost:5173"]
 
 
 @lru_cache
