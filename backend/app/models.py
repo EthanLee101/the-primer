@@ -4,7 +4,7 @@ from sqlalchemy import ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
-from app.mastery import INITIAL_DIFFICULTY
+from app.mastery import INITIAL_DIFFICULTY, P_INIT
 
 
 class Parent(Base):
@@ -76,7 +76,7 @@ class Mastery(Base):
     child_id: Mapped[int] = mapped_column(ForeignKey("child.id"))
     skill_id: Mapped[int] = mapped_column(ForeignKey("skill.id"))
     difficulty: Mapped[int] = mapped_column(default=INITIAL_DIFFICULTY)
-    rolling_accuracy: Mapped[float | None] = mapped_column(default=None)
+    p_know: Mapped[float] = mapped_column(default=P_INIT)
     attempts_count: Mapped[int] = mapped_column(default=0)
     correct_count: Mapped[int] = mapped_column(default=0)
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())

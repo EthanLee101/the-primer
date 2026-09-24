@@ -92,7 +92,7 @@ def my_children(
                     MasterySummary(
                         skill_code=m.skill.code,
                         difficulty=m.difficulty,
-                        rolling_accuracy=m.rolling_accuracy,
+                        p_know=m.p_know,
                         attempts_count=m.attempts_count,
                         correct_count=m.correct_count,
                     )

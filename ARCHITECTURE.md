@@ -58,7 +58,7 @@ decision below; update the resume text to match once this ships.)
 | LLM provider | **Gemini API** via `google-genai` | Switched from OpenAI in an earlier session — free tier. `google-generativeai` (the original scaffold's pick) is the now-superseded SDK; `google-genai` (`from google import genai`) is current, confirmed increment 8. Used only for wrong-answer explanations/encouragement (`app/llm.py`), kept out of the grading path — arithmetic correctness stays deterministic, and any Gemini failure degrades to "no explanation this time," never a failed request. |
 | Rate limiting | slowapi, per-IP, `20/minute` on `POST /attempts/{id}/answer` | Bounds free-tier Gemini cost/quota exposure. `key_style="endpoint"` (not slowapi's default `"url"`) — the default buckets by literal resolved path, so a route with a path param like `{attempt_id}` never accumulates a shared count. In-memory storage, single-instance only; a multi-instance deploy needs a shared store (Redis) — not needed yet. Added increment 8. |
 | Error handling | Global exception handler (`app/main.py`) + per-call server-side logging | Any unhandled exception returns a generic `{"detail": "Something went wrong..."}` (500) to the client — never a message, exception type, or traceback. Full detail goes to server logs only (`app/logging_config.py`, stdout — Fly.io captures it natively). Deliberate `HTTPException`s (404/400/409) are unaffected; only genuinely unexpected failures are caught. Added increment 8, but applies API-wide. |
-| Adaptivity engine | Rules-based now → Bayesian Knowledge Tracing later | Start with rolling-accuracy difficulty adjustment (increment 5), upgrade to BKT (increment 11) |
+| Adaptivity engine | Bayesian Knowledge Tracing (`app/mastery.py`) | Replaced the increment-5 rolling-accuracy engine in increment 11. Tracks `p_know` per (child, skill) — a Bayesian posterior updated on every attempt from fixed `P_SLIP`/`P_GUESS` evidence parameters, then a transition step. Deliberate departure from textbook BKT (Corbett & Anderson, 1994): added a `P_FORGET` parameter (a knowing→not-knowing transition) alongside the standard `P_TRANSIT` (not-knowing→knowing) one. Vanilla BKT only models learning — mastery is treated as sticky once reached — which is wrong for this product: difficulty needs to track a child's *current* performance and come back down if they start missing problems, not stay pinned at a peak from an early hot streak. Without forgetting, `p_know` also saturates at exactly 1.0 in floating point (`1 - p_know` underflows to 0) and gets permanently stuck; `P_FORGET` fixes that too. All five constants (`P_INIT=0.05`, `P_TRANSIT=0.02`, `P_FORGET=0.05`, `P_SLIP=0.1`, `P_GUESS=0.1`) are engineering-tuned starting points — picked by simulating attempt sequences — not values fit from real usage data; a production system would fit these per skill via EM on logged attempts. Served difficulty is *not* read directly off `p_know` — `next_difficulty()` rate-limits it to move at most `MAX_DIFFICULTY_STEP=1` level per attempt (see Known gaps below for why this was added after increment 11 shipped). `p_know` itself is never rate-limited, only its effect on the served difficulty. See `tests/unit/test_mastery.py` for the pinned math (one hand-computed Bayes update) and the behavioral invariants. |
 | CI | GitHub Actions | Set up in increment 1 |
 | Parent auth | Argon2id (`argon2-cffi`) + JWT bearer tokens (`pyjwt`) | Argon2id: OWASP's current top password-hashing recommendation. Bearer token over cookies deliberately — cross-origin cookies need `SameSite=None`, which disables CSRF protection; a bearer token sidesteps CSRF entirely since browsers don't auto-attach headers cross-site. Token held in frontend memory only (never `localStorage`) — trade-off: refresh logs the parent out, no persistence yet. `POST /parents` and `POST /parents/login` rate-limited (`5/minute`/IP) against brute-force; login timing/error message identical for "wrong password" and "no such account" (no email enumeration). Added increment 9. |
 
@@ -97,8 +97,9 @@ commits — Claude stages changes but does not commit.
     behind the login from increment 9. ✅ **Done** — plus a same-device
     "claim this child" flow (new `POST /children/{id}/claim` endpoint) to
     link children created before the parent had an account.
-11. **Bayesian Knowledge Tracing upgrade** — replace/augment the rules-based
-    engine with a BKT mastery-probability model. 🔶 **Current**
+11. **Bayesian Knowledge Tracing upgrade** — replace the rules-based engine
+    with a real BKT mastery-probability model. ✅ **Done** — see the
+    adaptivity engine row above for the model and its parameters.
 12. **Deployment & polish** — backend → Fly.io, DB → Neon, frontend →
     Vercel; secrets/env config; stretch (second skill domain / theming) if
     time allows.
@@ -231,6 +232,69 @@ commits — Claude stages changes but does not commit.
   stack table). Worth remembering for the parent dashboard and any future
   visual work: check against Reflectory's actual look before committing to a
   direction, not just against generic AI-slop patterns.
+- **Textbook BKT permanently locks up under a real correct streak — caught
+  by simulating the math before it ever reached a test file.** Vanilla BKT
+  (Corbett & Anderson) only models learning, never forgetting, so `p_know`
+  climbs toward 1.0 and stays there. In floating point it gets there fast
+  enough that `1 - p_know` underflows to exactly `0.0` after roughly 3–4
+  correct answers in a row — and once that happens, no amount of
+  subsequent wrong answers can move it, since every update multiplies by
+  a quantity that's now identically zero. A naive port of the textbook
+  algorithm would have shipped this: difficulty rises normally, then
+  silently stops responding to wrong answers, with no crash or error to
+  notice by. Fixed by adding a `P_FORGET` transition parameter (a
+  documented, standard extension — see the tech stack table). Caught the
+  second layer of the same problem right after: `P_FORGET` fires on every
+  attempt regardless of outcome, which caps the highest `p_know` a correct
+  streak can ever reach at roughly `1 - P_FORGET` — an earlier parameter
+  choice (`P_FORGET=0.3`) made difficulty 8–10 mathematically unreachable
+  no matter how long the streak, which only showed up by actually
+  simulating a 30-attempt correct streak, not from the unit tests' shorter
+  ones. Retuned to `P_FORGET=0.05`. See `tests/unit/test_mastery.py` and
+  the `P_FORGET` comment in `app/mastery.py`.
+- **Difficulty swung too sharply per attempt, caught by the user playing
+  the real deployed BKT engine, not by any test.** All four unit-test
+  invariants passed with `P_FORGET=0.05` (rises, falls, bounded, per-skill
+  scoped), but they only checked *direction*, not *magnitude* — nothing
+  asserted how far a single attempt should move difficulty. In practice:
+  one correct answer from a fresh child jumped difficulty 1 → 4, and two
+  wrong answers from a difficulty-9 peak dropped it to 2. Both are
+  mathematically correct outputs of the Bayesian update, and both feel
+  jarring to actually experience as a child. Root cause: `p_know` (the
+  model's belief) and the *served difficulty* (the child's felt
+  experience) were the same read — any single large evidence swing was
+  passed straight through. Fixed by separating them: `p_know` still
+  updates at full Bayesian speed (a genuine belief update shouldn't be
+  slowed down), but `next_difficulty()` now rate-limits the *served*
+  difficulty to move at most `MAX_DIFFICULTY_STEP=1` level per attempt —
+  the same one-level-at-a-time cadence the original v1 rules engine used.
+  Added `test_difficulty_moves_by_at_most_one_step_per_attempt` as the
+  direct regression test, since this class of bug (correct direction,
+  wrong magnitude) won't be caught by invariant tests that only check sign.
+- **The parent dashboard stayed unlocked after handing the device back to
+  a child — found by the user asking "should kids be able to access this?"
+  and tracing the actual navigation code, not by any test.** `POST
+  /parents/me/children` is properly auth-gated, and the login wall
+  (`ParentAuth`) works correctly the first time. But the auth token lives
+  in `AuthContext` React state for the life of the browser tab (deliberate
+  — see the Parent auth row above), and `AppShell`'s "back to child" toggle
+  (`App.tsx`) only flipped a `"parent" | "child"` UI state, never called
+  `logout()`. So after a parent logged in once on a shared device, the
+  child-facing "Parent dashboard" button — always visible, deliberately
+  unauthenticated so a kid can reach it — became a live door into that
+  parent's dashboard for the rest of the tab's life: tap it, and the
+  progress data is right there, no login prompt. This is a different class
+  of issue than the already-tracked "child endpoints have no auth" gap
+  above: that one is a deliberate low-stakes tradeoff (arithmetic practice,
+  no personal data); this one is the thing that's *supposed* to be gated
+  leaking past its own gate because of a UI state bug. Fixed by calling
+  `logout()` in the same handler that switches the view back to child mode
+  — the explicit hand-back is the realistic moment to lock it, not a page
+  refresh (which already logs out, since the token was never persisted).
+  Not yet addressed: a parent who leaves the dashboard open and walks away
+  without explicitly switching back — a session-inactivity timeout would
+  cover that, and is worth adding if this ever runs on a device a child has
+  extended unsupervised access to.
 
 ## Working agreement
 

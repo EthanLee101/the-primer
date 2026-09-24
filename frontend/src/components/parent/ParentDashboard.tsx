@@ -8,8 +8,8 @@ interface ParentDashboardProps {
   onBackToChild: () => void;
 }
 
-function formatAccuracy(rollingAccuracy: number | null): string {
-  return rollingAccuracy === null ? "—" : `${Math.round(rollingAccuracy * 100)}%`;
+function formatMastery(pKnow: number): string {
+  return `${Math.round(pKnow * 100)}%`;
 }
 
 export function ParentDashboard({ onBackToChild }: ParentDashboardProps) {
@@ -111,7 +111,7 @@ export function ParentDashboard({ onBackToChild }: ParentDashboardProps) {
                 <tr>
                   <th>Skill</th>
                   <th>Difficulty</th>
-                  <th>Accuracy</th>
+                  <th>Mastery</th>
                   <th>Attempts</th>
                 </tr>
               </thead>
@@ -120,7 +120,7 @@ export function ParentDashboard({ onBackToChild }: ParentDashboardProps) {
                   <tr key={m.skill_code}>
                     <td className={styles.skillName}>{m.skill_code}</td>
                     <td>{m.difficulty}</td>
-                    <td>{formatAccuracy(m.rolling_accuracy)}</td>
+                    <td>{formatMastery(m.p_know)}</td>
                     <td>
                       {m.correct_count}/{m.attempts_count}
                     </td>

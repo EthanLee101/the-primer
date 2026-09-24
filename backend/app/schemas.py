@@ -59,7 +59,7 @@ class SessionOut(BaseModel):
 class MasterySummary(BaseModel):
     skill_code: str
     difficulty: int
-    rolling_accuracy: float | None
+    p_know: float
     attempts_count: int
     correct_count: int
 

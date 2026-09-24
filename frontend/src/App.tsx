@@ -73,6 +73,7 @@ function ParentArea({ onSwitchArea }: AreaProps) {
 
 function AppShell() {
   const [area, setArea] = useState<"child" | "parent">("child");
+  const { logout } = useAuth();
 
   // toggles document.body.dataset.theme rather than scoping a CSS class to a
   // wrapper div — lets the "Blueprint Primer" rules in theme.css fully
@@ -84,7 +85,19 @@ function AppShell() {
   return area === "child" ? (
     <ChildArea onSwitchArea={() => setArea("parent")} />
   ) : (
-    <ParentArea onSwitchArea={() => setArea("child")} />
+    <ParentArea
+      onSwitchArea={() => {
+        // A parent handing the device back to their kid is the realistic
+        // point where this needs to lock, not just a page refresh (the
+        // token is memory-only, so a refresh already logs out) — without
+        // this, the token sat in memory for the rest of the tab's life,
+        // and the child-facing "Parent dashboard" button (always visible,
+        // deliberately unauthenticated so a kid can reach it) would walk
+        // straight back into the dashboard with no login prompt at all.
+        logout();
+        setArea("child");
+      }}
+    />
   );
 }
 

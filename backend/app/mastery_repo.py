@@ -33,7 +33,7 @@ def get_or_create_mastery(db: Session, child_id: int, skill_id: int) -> Mastery:
 def to_state(row: Mastery) -> MasteryState:
     return MasteryState(
         difficulty=row.difficulty,
-        rolling_accuracy=row.rolling_accuracy,
+        p_know=row.p_know,
         attempts_count=row.attempts_count,
         correct_count=row.correct_count,
     )
@@ -41,6 +41,6 @@ def to_state(row: Mastery) -> MasteryState:
 
 def apply_state(row: Mastery, state: MasteryState) -> None:
     row.difficulty = state.difficulty
-    row.rolling_accuracy = state.rolling_accuracy
+    row.p_know = state.p_know
     row.attempts_count = state.attempts_count
     row.correct_count = state.correct_count

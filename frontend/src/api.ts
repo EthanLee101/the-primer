@@ -41,7 +41,7 @@ export interface Session {
 export interface MasterySummary {
   skill_code: SkillCode;
   difficulty: number;
-  rolling_accuracy: number | null;
+  p_know: number;
   attempts_count: number;
   correct_count: number;
 }
