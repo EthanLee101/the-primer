@@ -45,7 +45,12 @@ function ChildArea({ onSwitchArea }: AreaProps) {
   } else {
     content = (
       <ProblemView
+        // remounts (fresh session state) on a skill or child change,
+        // instead of ProblemView needing to reset its own session-tracking
+        // state in an effect
+        key={`${screen.child.id}-${screen.skill}`}
         childId={screen.child.id}
+        childName={screen.child.name}
         skill={screen.skill}
         onChangeSkill={() => setScreen({ name: "skill-picker", child: screen.child })}
       />

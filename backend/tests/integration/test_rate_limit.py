@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Iterator
 
 import pytest
@@ -12,24 +13,25 @@ client = TestClient(app)
 
 
 @pytest.fixture
-def child_id() -> Iterator[int]:
+def child_id() -> Iterator[uuid.UUID]:
     with SessionLocal() as db:
         child = Child(name="rate-limit-child")
         db.add(child)
         db.commit()
         db.refresh(child)
-        cid = child.id
+        cid = child.public_id
+        internal_id = child.id
 
     yield cid
 
     with SessionLocal() as db:
-        db.query(Attempt).filter(Attempt.child_id == cid).delete()
-        db.query(Mastery).filter(Mastery.child_id == cid).delete()
-        db.query(Child).filter(Child.id == cid).delete()
+        db.query(Attempt).filter(Attempt.child_id == internal_id).delete()
+        db.query(Mastery).filter(Mastery.child_id == internal_id).delete()
+        db.query(Child).filter(Child.id == internal_id).delete()
         db.commit()
 
 
-def test_answer_endpoint_enforces_rate_limit(child_id: int) -> None:
+def test_answer_endpoint_enforces_rate_limit(child_id: uuid.UUID) -> None:
     limit = int(get_settings().answer_rate_limit.split("/")[0])
 
     # one more attempt than the limit allows, each answered once
@@ -47,7 +49,7 @@ def test_answer_endpoint_enforces_rate_limit(child_id: int) -> None:
     assert statuses[-1] == 429
 
 
-def test_rate_limit_response_does_not_leak_internals(child_id: int) -> None:
+def test_rate_limit_response_does_not_leak_internals(child_id: uuid.UUID) -> None:
     limit = int(get_settings().answer_rate_limit.split("/")[0])
 
     attempt_ids = []
@@ -61,6 +63,34 @@ def test_rate_limit_response_does_not_leak_internals(child_id: int) -> None:
     response = client.post(f"/attempts/{attempt_ids[-1]}/answer", json={"submitted_answer": 0})
     assert response.status_code == 429
     assert response.json() == {"detail": "Too many requests. Please wait a moment and try again."}
+
+
+def test_child_creation_endpoint_enforces_rate_limit() -> None:
+    limit = int(get_settings().general_rate_limit.split("/")[0])
+
+    responses = [client.post("/children", json={"name": "rl-kid"}) for _ in range(limit + 1)]
+    statuses = [r.status_code for r in responses]
+
+    assert statuses.count(201) == limit
+    assert statuses[-1] == 429
+
+    with SessionLocal() as db:
+        for r in responses:
+            if r.status_code == 201:
+                db.query(Child).filter(Child.public_id == r.json()["id"]).delete()
+        db.commit()
+
+
+def test_problem_serving_endpoint_enforces_rate_limit(child_id: uuid.UUID) -> None:
+    limit = int(get_settings().general_rate_limit.split("/")[0])
+
+    statuses = [
+        client.post(f"/children/{child_id}/problems", params={"skill": "addition"}).status_code
+        for _ in range(limit + 1)
+    ]
+
+    assert statuses.count(201) == limit
+    assert statuses[-1] == 429
 
 
 def test_login_endpoint_enforces_rate_limit() -> None:

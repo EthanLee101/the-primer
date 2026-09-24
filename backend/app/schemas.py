@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field
@@ -8,15 +9,18 @@ class ChildCreate(BaseModel):
 
 
 class ChildOut(BaseModel):
-    id: int
+    # This is Child.public_id, never the internal int PK — see the
+    # comment on Child.public_id in app/models.py. Always constructed
+    # explicitly in the router (id=child.public_id), not via
+    # from_attributes, since a field named "id" would otherwise silently
+    # pick up the wrong attribute by name.
+    id: uuid.UUID
     name: str
     created_at: datetime
 
-    model_config = {"from_attributes": True}
-
 
 class ProblemOut(BaseModel):
-    attempt_id: int
+    attempt_id: uuid.UUID
     skill_code: str
     difficulty: int
     operand_a: int
@@ -74,7 +78,7 @@ class AttemptSummary(BaseModel):
 
 
 class ChildProgress(BaseModel):
-    id: int
+    id: uuid.UUID
     name: str
     mastery: list[MasterySummary]
     recent_attempts: list[AttemptSummary]

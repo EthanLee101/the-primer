@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Iterator
 
 import pytest
@@ -11,24 +12,25 @@ client = TestClient(app)
 
 
 @pytest.fixture
-def child_id() -> Iterator[int]:
+def child_id() -> Iterator[uuid.UUID]:
     with SessionLocal() as db:
         child = Child(name="test-child")
         db.add(child)
         db.commit()
         db.refresh(child)
-        cid = child.id
+        cid = child.public_id
+        internal_id = child.id
 
     yield cid
 
     with SessionLocal() as db:
-        db.query(Attempt).filter(Attempt.child_id == cid).delete()
-        db.query(Mastery).filter(Mastery.child_id == cid).delete()
-        db.query(Child).filter(Child.id == cid).delete()
+        db.query(Attempt).filter(Attempt.child_id == internal_id).delete()
+        db.query(Mastery).filter(Mastery.child_id == internal_id).delete()
+        db.query(Child).filter(Child.id == internal_id).delete()
         db.commit()
 
 
-def test_full_problem_and_answer_flow(child_id: int) -> None:
+def test_full_problem_and_answer_flow(child_id: uuid.UUID) -> None:
     response = client.post(f"/children/{child_id}/problems", params={"skill": "addition"})
     assert response.status_code == 201
     problem = response.json()
@@ -46,7 +48,7 @@ def test_full_problem_and_answer_flow(child_id: int) -> None:
     assert body["explanation"] is None  # no LLM call on a correct answer
 
 
-def test_wrong_answer_is_graded_correctly(child_id: int) -> None:
+def test_wrong_answer_is_graded_correctly(child_id: uuid.UUID) -> None:
     response = client.post(f"/children/{child_id}/problems", params={"skill": "addition"})
     problem = response.json()
     correct_answer = problem["operand_a"] + problem["operand_b"]
@@ -61,7 +63,7 @@ def test_wrong_answer_is_graded_correctly(child_id: int) -> None:
     assert body["explanation"] is not None  # fake provider still returns something in tests
 
 
-def test_cannot_answer_same_attempt_twice(child_id: int) -> None:
+def test_cannot_answer_same_attempt_twice(child_id: uuid.UUID) -> None:
     response = client.post(f"/children/{child_id}/problems", params={"skill": "addition"})
     attempt_id = response.json()["attempt_id"]
 
@@ -73,15 +75,15 @@ def test_cannot_answer_same_attempt_twice(child_id: int) -> None:
 
 
 def test_answering_unknown_attempt_404s() -> None:
-    response = client.post("/attempts/999999999/answer", json={"submitted_answer": 0})
+    response = client.post(f"/attempts/{uuid.uuid4()}/answer", json={"submitted_answer": 0})
     assert response.status_code == 404
 
 
-def test_unknown_skill_400s(child_id: int) -> None:
+def test_unknown_skill_400s(child_id: uuid.UUID) -> None:
     response = client.post(f"/children/{child_id}/problems", params={"skill": "calculus"})
     assert response.status_code == 400
 
 
 def test_unknown_child_404s() -> None:
-    response = client.post("/children/999999999/problems", params={"skill": "addition"})
+    response = client.post(f"/children/{uuid.uuid4()}/problems", params={"skill": "addition"})
     assert response.status_code == 404

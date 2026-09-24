@@ -86,7 +86,7 @@ def my_children(
         ).all()
         result.append(
             ChildProgress(
-                id=child.id,
+                id=child.public_id,
                 name=child.name,
                 mastery=[
                     MasterySummary(

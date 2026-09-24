@@ -7,13 +7,15 @@ const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? "http://localh
 export type SkillCode = "addition" | "subtraction" | "multiplication" | "division";
 
 export interface Child {
-  id: number;
+  // an opaque identifier (UUID), not the sequential internal id — see the
+  // comment on Child.public_id in backend/app/models.py
+  id: string;
   name: string;
   created_at: string;
 }
 
 export interface Problem {
-  attempt_id: number;
+  attempt_id: string;
   skill_code: SkillCode;
   difficulty: number;
   operand_a: number;
@@ -54,7 +56,7 @@ export interface AttemptSummary {
 }
 
 export interface ChildProgress {
-  id: number;
+  id: string;
   name: string;
   mastery: MasterySummary[];
   recent_attempts: AttemptSummary[];
@@ -90,14 +92,14 @@ export function createChild(name: string): Promise<Child> {
   });
 }
 
-export function fetchProblem(childId: number, skill: SkillCode): Promise<Problem> {
+export function fetchProblem(childId: string, skill: SkillCode): Promise<Problem> {
   return request<Problem>(
     `/children/${childId}/problems?skill=${encodeURIComponent(skill)}`,
     { method: "POST" },
   );
 }
 
-export function submitAnswer(attemptId: number, submittedAnswer: number): Promise<AnswerResult> {
+export function submitAnswer(attemptId: string, submittedAnswer: number): Promise<AnswerResult> {
   return request<AnswerResult>(`/attempts/${attemptId}/answer`, {
     method: "POST",
     body: JSON.stringify({ submitted_answer: submittedAnswer }),
@@ -126,7 +128,7 @@ export function fetchMyChildren(token: string): Promise<ChildProgress[]> {
   return request<ChildProgress[]>("/parents/me/children", { headers: authHeaders(token) });
 }
 
-export function claimChild(childId: number, token: string): Promise<Child> {
+export function claimChild(childId: string, token: string): Promise<Child> {
   return request<Child>(`/children/${childId}/claim`, {
     method: "POST",
     headers: authHeaders(token),

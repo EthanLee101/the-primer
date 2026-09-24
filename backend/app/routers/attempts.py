@@ -1,7 +1,9 @@
 import logging
+import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -23,11 +25,11 @@ router = APIRouter(prefix="/attempts", tags=["attempts"])
 @limiter.limit(get_settings().answer_rate_limit)
 def submit_answer(
     request: Request,
-    attempt_id: int,
+    attempt_id: uuid.UUID,
     payload: AnswerSubmit,
     db: Session = Depends(get_db),
 ) -> AnswerResult:
-    attempt = db.get(Attempt, attempt_id)
+    attempt = db.scalar(select(Attempt).where(Attempt.public_id == attempt_id))
     if attempt is None:
         raise HTTPException(status_code=404, detail="attempt not found")
     if attempt.answered_at is not None:
@@ -37,7 +39,7 @@ def submit_answer(
     if operation is None:
         # a seeded skill row with a code we don't recognize is a data
         # consistency bug, not something to expose to the client
-        logger.error("attempt %d has unrecognized skill code: %s", attempt_id, attempt.skill.code)
+        logger.error("attempt %s has unrecognized skill code: %s", attempt_id, attempt.skill.code)
         raise HTTPException(status_code=500, detail="Something went wrong. Please try again.")
 
     correct_answer = grade(attempt.operand_a, attempt.operand_b, operation)

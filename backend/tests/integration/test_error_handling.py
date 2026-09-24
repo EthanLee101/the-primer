@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Iterator
 from unittest.mock import patch
 
@@ -12,24 +13,25 @@ client = TestClient(app)
 
 
 @pytest.fixture
-def child_id() -> Iterator[int]:
+def child_id() -> Iterator[uuid.UUID]:
     with SessionLocal() as db:
         child = Child(name="error-handling-child")
         db.add(child)
         db.commit()
         db.refresh(child)
-        cid = child.id
+        cid = child.public_id
+        internal_id = child.id
 
     yield cid
 
     with SessionLocal() as db:
-        db.query(Attempt).filter(Attempt.child_id == cid).delete()
-        db.query(Mastery).filter(Mastery.child_id == cid).delete()
-        db.query(Child).filter(Child.id == cid).delete()
+        db.query(Attempt).filter(Attempt.child_id == internal_id).delete()
+        db.query(Mastery).filter(Mastery.child_id == internal_id).delete()
+        db.query(Child).filter(Child.id == internal_id).delete()
         db.commit()
 
 
-def test_unhandled_exception_returns_generic_body_not_a_traceback(child_id: int) -> None:
+def test_unhandled_exception_returns_generic_body_not_a_traceback(child_id: uuid.UUID) -> None:
     response = client.post(f"/children/{child_id}/problems", params={"skill": "addition"})
     attempt_id = response.json()["attempt_id"]
 
@@ -59,6 +61,6 @@ def test_unhandled_exception_returns_generic_body_not_a_traceback(child_id: int)
 def test_known_http_exceptions_are_unaffected_by_the_generic_handler() -> None:
     # a deliberate, controlled 404 should still say exactly what it says —
     # the generic handler must only catch genuinely unexpected exceptions
-    response = client.post("/attempts/999999999/answer", json={"submitted_answer": 0})
+    response = client.post(f"/attempts/{uuid.uuid4()}/answer", json={"submitted_answer": 0})
     assert response.status_code == 404
     assert response.json() == {"detail": "attempt not found"}

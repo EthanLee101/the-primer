@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Iterator
 
 import pytest
@@ -149,7 +150,7 @@ def test_child_creation_without_auth_still_works_and_is_unlinked() -> None:
     assert response.status_code == 201
 
     with SessionLocal() as db:
-        child = db.get(Child, response.json()["id"])
+        child = db.scalar(select(Child).where(Child.public_id == response.json()["id"]))
         assert child is not None
         assert child.parent_id is None
         db.delete(child)
@@ -218,7 +219,7 @@ def test_claim_requires_authentication() -> None:
     assert response.status_code == 401
 
     with SessionLocal() as db:
-        child = db.get(Child, anon.json()["id"])
+        child = db.scalar(select(Child).where(Child.public_id == anon.json()["id"]))
         assert child is not None
         db.delete(child)
         db.commit()
@@ -231,7 +232,7 @@ def test_claim_nonexistent_child_404s(cleanup_emails: list[str]) -> None:
     ).json()["access_token"]
 
     response = client.post(
-        "/children/999999999/claim", headers={"Authorization": f"Bearer {token}"}
+        f"/children/{uuid.uuid4()}/claim", headers={"Authorization": f"Bearer {token}"}
     )
     assert response.status_code == 404
 

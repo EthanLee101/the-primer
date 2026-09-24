@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     # per-IP; login/register are brute-force/credential-stuffing targets, so
     # this is deliberately much tighter than answer_rate_limit.
     auth_rate_limit: str = "5/minute"
+    # per-IP; applies to POST /children and POST /children/{id}/problems —
+    # both unauthenticated by design (the child-facing flow stays
+    # frictionless) and previously unlimited. Not driven by external API
+    # cost like answer_rate_limit, just generic abuse/spam-row prevention
+    # now that this is a public deploy, not localhost-only.
+    general_rate_limit: str = "30/minute"
     # No hardcoded fallback secret — that's a real vulnerability if it ever
     # ships. If JWT_SECRET_KEY isn't set, each process gets a fresh random
     # one at startup, which just invalidates existing sessions on restart —

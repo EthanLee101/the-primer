@@ -4,7 +4,8 @@ import { ApiError, fetchProblem, submitAnswer, type Problem, type SkillCode } fr
 import styles from "./ProblemView.module.css";
 
 interface ProblemViewProps {
-  childId: number;
+  childId: string;
+  childName: string;
   skill: SkillCode;
   onChangeSkill: () => void;
 }
@@ -13,6 +14,13 @@ interface Feedback {
   correct: boolean;
   correctAnswer: number;
   explanation: string | null;
+}
+
+interface SessionSummary {
+  answered: number;
+  correct: number;
+  startDifficulty: number;
+  endDifficulty: number;
 }
 
 function describeError(err: unknown): string {
@@ -24,6 +32,21 @@ function describeError(err: unknown): string {
 // mirrors app/mastery.py's MAX_DIFFICULTY — display-only, so a hardcoded
 // mirror is fine rather than plumbing it through the API
 const MAX_DIFFICULTY = 10;
+
+// A practice session recaps after this many answered problems, or whenever
+// the child stops early ("I'm done for now"). Purely a client-side pacing
+// concept — nothing about "sessions" is persisted server-side yet; each
+// answered attempt is still just a row in the same flat, timestamped log
+// it always was (see ChildProgress.recent_attempts). A durable session
+// concept is a natural next step if the parent dashboard ever wants to
+// show session-by-session history instead of a flat recent-attempts list.
+const SESSION_LENGTH = 10;
+
+function describeDifficultyChange(start: number, end: number): string {
+  if (end > start) return "You leveled up during this session!";
+  if (end < start) return "These will feel easier with a bit more practice.";
+  return "Nice, steady practice.";
+}
 
 function BeadRail({ difficulty }: { difficulty: number }) {
   return (
@@ -41,23 +64,75 @@ function BeadRail({ difficulty }: { difficulty: number }) {
   );
 }
 
-export function ProblemView({ childId, skill, onChangeSkill }: ProblemViewProps) {
+function SessionSummaryCard({
+  childName,
+  skill,
+  summary,
+  onKeepPracticing,
+  onChangeSkill,
+}: {
+  childName: string;
+  skill: SkillCode;
+  summary: SessionSummary;
+  onKeepPracticing: () => void;
+  onChangeSkill: () => void;
+}) {
+  return (
+    <motion.div
+      className={styles.card}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+    >
+      <p className={styles.summaryTitle}>Nice work, {childName}!</p>
+      <p className={styles.summaryStat}>
+        {summary.correct} out of {summary.answered} correct
+      </p>
+      <p className={styles.summaryNote}>
+        {describeDifficultyChange(summary.startDifficulty, summary.endDifficulty)}
+      </p>
+      <div className={styles.form}>
+        <button className={styles.nextButton} onClick={onKeepPracticing}>
+          Keep practicing {skill}
+        </button>
+        <button className={styles.backButton} onClick={onChangeSkill}>
+          Try a different skill →
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+export function ProblemView({ childId, childName, skill, onChangeSkill }: ProblemViewProps) {
   const [problem, setProblem] = useState<Problem | null>(null);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Reset for free on a skill/child change — App.tsx keys this component
+  // by both, so React remounts it (fresh initial state) rather than this
+  // needing to reset these itself in an effect.
+  const [sessionAnswered, setSessionAnswered] = useState(0);
+  const [sessionCorrect, setSessionCorrect] = useState(0);
+  const [sessionStartDifficulty, setSessionStartDifficulty] = useState<number | null>(null);
+  const [summary, setSummary] = useState<SessionSummary | null>(null);
+
   const loadNextProblem = useCallback(
-    async (signal: AbortSignal) => {
+    async (signal: AbortSignal): Promise<Problem | null> => {
       setFeedback(null);
       setAnswer("");
       setError(null);
       try {
         const next = await fetchProblem(childId, skill);
-        if (!signal.aborted) setProblem(next);
+        if (!signal.aborted) {
+          setProblem(next);
+          setSessionStartDifficulty((d) => d ?? next.difficulty);
+        }
+        return next;
       } catch (err) {
         if (!signal.aborted) setError(describeError(err));
+        return null;
       }
     },
     [childId, skill],
@@ -85,11 +160,64 @@ export function ProblemView({ childId, skill, onChangeSkill }: ProblemViewProps)
         correctAnswer: result.correct_answer,
         explanation: result.explanation,
       });
+      setSessionAnswered((n) => n + 1);
+      if (result.correct) setSessionCorrect((n) => n + 1);
     } catch (err) {
       setError(describeError(err));
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleNext(): Promise<void> {
+    // fetch the next problem regardless — if the session just ended, its
+    // difficulty becomes the summary's "end" figure, and it's already
+    // loaded and ready the moment the child chooses to keep practicing
+    const next = await loadNextProblem(new AbortController().signal);
+    if (next && sessionAnswered >= SESSION_LENGTH && sessionStartDifficulty !== null) {
+      setSummary({
+        answered: sessionAnswered,
+        correct: sessionCorrect,
+        startDifficulty: sessionStartDifficulty,
+        endDifficulty: next.difficulty,
+      });
+    }
+  }
+
+  function handleFinishEarly(): void {
+    if (problem === null || sessionStartDifficulty === null) return;
+    setSummary({
+      answered: sessionAnswered,
+      correct: sessionCorrect,
+      startDifficulty: sessionStartDifficulty,
+      endDifficulty: problem.difficulty,
+    });
+  }
+
+  function handleKeepPracticing(): void {
+    setSummary(null);
+    setSessionAnswered(0);
+    setSessionCorrect(0);
+    setSessionStartDifficulty(problem?.difficulty ?? null);
+  }
+
+  if (summary) {
+    return (
+      <div className={styles.stage}>
+        <div className={styles.topBar}>
+          <button className={styles.backButton} onClick={onChangeSkill}>
+            ← change skill
+          </button>
+        </div>
+        <SessionSummaryCard
+          childName={childName}
+          skill={skill}
+          summary={summary}
+          onKeepPracticing={handleKeepPracticing}
+          onChangeSkill={onChangeSkill}
+        />
+      </div>
+    );
   }
 
   return (
@@ -101,7 +229,9 @@ export function ProblemView({ childId, skill, onChangeSkill }: ProblemViewProps)
         {problem && (
           <>
             <BeadRail difficulty={problem.difficulty} />
-            <span className={styles.srOnly}>Level {problem.difficulty} of {MAX_DIFFICULTY}</span>
+            <span className={styles.srOnly}>
+              Level {problem.difficulty} of {MAX_DIFFICULTY}
+            </span>
           </>
         )}
       </div>
@@ -152,11 +282,11 @@ export function ProblemView({ childId, skill, onChangeSkill }: ProblemViewProps)
                     : (feedback.explanation ??
                       `Not quite — the answer was ${feedback.correctAnswer}.`)}
                 </p>
-                <button
-                  className={styles.nextButton}
-                  onClick={() => void loadNextProblem(new AbortController().signal)}
-                >
+                <button className={styles.nextButton} onClick={() => void handleNext()}>
                   Next problem →
+                </button>
+                <button className={styles.backButton} onClick={handleFinishEarly}>
+                  I'm done for now
                 </button>
               </div>
             )}

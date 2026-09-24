@@ -100,6 +100,28 @@ commits — Claude stages changes but does not commit.
 11. **Bayesian Knowledge Tracing upgrade** — replace the rules-based engine
     with a real BKT mastery-probability model. ✅ **Done** — see the
     adaptivity engine row above for the model and its parameters.
+**Pre-12 hardening + a product feature, done ahead of the public deploy.**
+Not its own numbered increment — this grew directly out of deciding the
+deploy target (Fly.io, backend; Vercel, frontend — see the App/Frontend
+hosting rows) would be linked from a public portfolio, which is a real
+change in exposure from localhost-only. Two pieces:
+- Opaque child/attempt IDs + broadened rate limiting — closes the
+  enumeration gap that only mattered once the app had a real URL. See
+  "Known gaps" above for the full writeup.
+- **Session-end summary** (`ProblemView.tsx`) — after 10 answered problems,
+  or whenever the child taps "I'm done for now," a recap screen shows
+  problems practiced, accuracy, and whether difficulty moved up, down, or
+  held steady over the session, before offering to keep practicing the
+  same skill or switch. Entirely client-side (`SESSION_LENGTH` in
+  `ProblemView.tsx`) — no new backend state; attempts are still the same
+  flat, timestamped log they always were. Motivated by an honest
+  self-assessment of the product: the child-facing flow was closer to
+  "adaptive flashcards" than anything resembling a tutor, since nothing
+  acknowledged a session as a unit of practice at all. A durable
+  server-side "session" concept (so the parent dashboard could show
+  session-by-session history instead of a flat recent-attempts list) is a
+  natural next step, not attempted here.
+
 12. **Deployment & polish** — backend → Fly.io, DB → Neon, frontend →
     Vercel; secrets/env config; stretch (second skill domain / theming) if
     time allows.
@@ -113,30 +135,39 @@ commits — Claude stages changes but does not commit.
 
 ## Known gaps (tracked, not accidental)
 
-- **Parent auth exists (increment 9); child endpoints still don't require it.**
-  `GET /parents/me/children` is properly protected and scoped — verified by
-  a test that two parents each with a linked child cannot see each other's
-  data. But `child_id` and `attempt_id` on the child-facing endpoints
-  (`POST /children`, `POST /children/{id}/problems`,
-  `POST /attempts/{id}/answer`) are still plain sequential integers with no
-  access control — anyone who has or guesses an ID can play as that child.
-  Deliberate for now: those endpoints need to stay usable with zero login
-  friction for the child-facing flow (increments 6/7), and nothing sensitive
-  is exposed through them (arithmetic practice, not personal data). Increment
-  10 added same-device claiming (`POST /children/{id}/claim`, plus the
-  dashboard's "link this child" prompt), which closes the *linking* half of
-  this gap for the common case — but claiming is still voluntary, and a
-  child device is still fully playable by anyone with the URL, forever,
-  whether or not it's ever claimed. Revisit whether stronger scoping should
-  be mandatory once there's a real reason to (e.g. a public deploy where
-  this matters more than it does on localhost).
-- **Rate limiting covers one endpoint, not the whole API.** Added in
-  increment 8, scoped deliberately to `POST /attempts/{id}/answer` (the one
-  that calls Gemini) per explicit request — `POST /children` and
-  `POST /children/{id}/problems` are still unlimited. Fine pre-deploy (no
-  external cost on those calls, just DB writes); revisit at increment 12's
-  public deploy, where any unauthenticated endpoint is a target regardless
-  of whether it costs money.
+- **Parent auth exists (increment 9); child endpoints still don't require
+  it — deliberately, but the IDs are opaque now.** `GET /parents/me/children`
+  is properly protected and scoped — verified by a test that two parents
+  each with a linked child cannot see each other's data. `child_id` and
+  `attempt_id` on the child-facing endpoints (`POST /children`,
+  `POST /children/{id}/problems`, `POST /attempts/{id}/answer`) still
+  require no login — that stays deliberate, so the child-facing flow
+  (increments 6/7) keeps zero friction. What changed, ahead of the public
+  deploy (increment 12) this doc always said would trigger a revisit: those
+  IDs were plain sequential integers (`Child.id`/`Attempt.id`), which meant
+  anyone could scan small numbers and enumerate real children — fine on
+  localhost, not fine once the app has a real, crawlable URL. Fixed by
+  adding a separate `public_id` (UUID) column to both `Child` and `Attempt`;
+  every external-facing route now looks up by `public_id`, and the
+  sequential int PK never leaves `app/models.py` — it's still used
+  internally for FKs/joins, just never exposed. This closes *enumeration*
+  specifically; it does not add authentication — anyone who legitimately
+  has a child's own URL from their own device can still use it with zero
+  friction, unchanged, by design. See
+  `test_internal_id_cannot_be_used_to_reach_a_child` in
+  `tests/integration/test_children_api.py`. Same-device claiming (increment
+  10, `POST /children/{id}/claim`) still closes the *linking* half of this
+  gap for the common case; claiming remains voluntary.
+- **Rate limiting covered one endpoint, not the whole API — broadened ahead
+  of the public deploy.** Added in increment 8, scoped deliberately to
+  `POST /attempts/{id}/answer` (the one that calls Gemini) per explicit
+  request. `POST /children` and `POST /children/{id}/problems` were
+  unlimited — fine on localhost, not fine on a public URL, where every
+  unauthenticated endpoint is a target regardless of whether it costs
+  money. Both now carry a new `GENERAL_RATE_LIMIT` (`30/minute`/IP,
+  `app/config.py`) — a separate setting from `ANSWER_RATE_LIMIT` since its
+  purpose is different (generic abuse/spam prevention, not bounding a paid
+  API's quota).
 - **Answer grading trusts the server, not the client.** When a problem is
   served (`POST /children/{id}/problems`), the operands are persisted to the
   `attempt` row immediately; grading (`POST /attempts/{id}/answer`) checks

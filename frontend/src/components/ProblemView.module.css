@@ -137,3 +137,26 @@
   color: var(--ink);
   margin-top: 16px;
 }
+
+.summaryTitle {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.6rem, 6vw, 2.2rem);
+  color: var(--ink);
+  margin: 0 0 12px;
+}
+
+.summaryStat {
+  font-family: var(--font-body);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--success);
+  margin: 0 0 4px;
+}
+
+.summaryNote {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  color: var(--ink-muted);
+  margin: 0 0 24px;
+}

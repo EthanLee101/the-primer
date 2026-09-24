@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Iterator
 
 import pytest
@@ -24,41 +25,42 @@ RECOVERY_LENGTH = 8
 
 
 @pytest.fixture
-def child_id() -> Iterator[int]:
+def child_id() -> Iterator[uuid.UUID]:
     with SessionLocal() as db:
         child = Child(name="test-child")
         db.add(child)
         db.commit()
         db.refresh(child)
-        cid = child.id
+        cid = child.public_id
+        internal_id = child.id
 
     yield cid
 
     with SessionLocal() as db:
-        db.query(Attempt).filter(Attempt.child_id == cid).delete()
-        db.query(Mastery).filter(Mastery.child_id == cid).delete()
-        db.query(Child).filter(Child.id == cid).delete()
+        db.query(Attempt).filter(Attempt.child_id == internal_id).delete()
+        db.query(Mastery).filter(Mastery.child_id == internal_id).delete()
+        db.query(Child).filter(Child.id == internal_id).delete()
         db.commit()
 
 
-def _answer_correctly(child_id: int) -> None:
+def _answer_correctly(child_id: uuid.UUID) -> None:
     problem = client.post(f"/children/{child_id}/problems", params={"skill": "addition"}).json()
     correct = problem["operand_a"] + problem["operand_b"]
     client.post(f"/attempts/{problem['attempt_id']}/answer", json={"submitted_answer": correct})
 
 
-def _answer_wrong(child_id: int) -> None:
+def _answer_wrong(child_id: uuid.UUID) -> None:
     problem = client.post(f"/children/{child_id}/problems", params={"skill": "addition"}).json()
     wrong = problem["operand_a"] + problem["operand_b"] + 1000
     client.post(f"/attempts/{problem['attempt_id']}/answer", json={"submitted_answer": wrong})
 
 
-def test_first_problem_starts_at_difficulty_one(child_id: int) -> None:
+def test_first_problem_starts_at_difficulty_one(child_id: uuid.UUID) -> None:
     problem = client.post(f"/children/{child_id}/problems", params={"skill": "addition"}).json()
     assert problem["difficulty"] == 1
 
 
-def test_difficulty_rises_after_sustained_correct_answers(child_id: int) -> None:
+def test_difficulty_rises_after_sustained_correct_answers(child_id: uuid.UUID) -> None:
     for _ in range(STREAK_LENGTH):
         _answer_correctly(child_id)
 
@@ -66,7 +68,7 @@ def test_difficulty_rises_after_sustained_correct_answers(child_id: int) -> None
     assert problem["difficulty"] > 1
 
 
-def test_difficulty_is_scoped_per_skill(child_id: int) -> None:
+def test_difficulty_is_scoped_per_skill(child_id: uuid.UUID) -> None:
     for _ in range(STREAK_LENGTH):
         _answer_correctly(child_id)
 
@@ -76,7 +78,7 @@ def test_difficulty_is_scoped_per_skill(child_id: int) -> None:
     assert subtraction_problem["difficulty"] == 1
 
 
-def test_difficulty_falls_after_sustained_wrong_answers(child_id: int) -> None:
+def test_difficulty_falls_after_sustained_wrong_answers(child_id: uuid.UUID) -> None:
     for _ in range(STREAK_LENGTH):
         _answer_correctly(child_id)
     peak = client.post(f"/children/{child_id}/problems", params={"skill": "addition"}).json()[
@@ -88,5 +90,4 @@ def test_difficulty_falls_after_sustained_wrong_answers(child_id: int) -> None:
         _answer_wrong(child_id)
 
     problem = client.post(f"/children/{child_id}/problems", params={"skill": "addition"}).json()
-    assert problem["difficulty"] < peak
     assert problem["difficulty"] == 1

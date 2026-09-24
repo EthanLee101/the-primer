@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 
 from sqlalchemy import ForeignKey, String, UniqueConstraint, func
@@ -22,6 +23,14 @@ class Child(Base):
     __tablename__ = "child"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # The only identifier ever exposed to clients. `id` is a sequential
+    # int and stays purely internal (FKs, joins) — a sequential PK in a
+    # URL is trivially enumerable (child_id=1, 2, 3...), which would let
+    # anyone scan for real children and read their name/practice history.
+    # An unguessable UUID closes that without adding any login friction to
+    # the deliberately frictionless child-facing flow (see Known gaps in
+    # ARCHITECTURE.md).
+    public_id: Mapped[uuid.UUID] = mapped_column(unique=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(100))
     # nullable: children created through the existing unauthenticated
     # "what's your name?" flow (increments 6/7) have no parent account yet —
@@ -48,6 +57,14 @@ class Attempt(Base):
     __tablename__ = "attempt"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # Same reasoning as Child.public_id: attempt_id is a write target
+    # (POST /attempts/{id}/answer), so a sequential int would let anyone
+    # enumerate and answer attempts that were never served to them —
+    # potentially grading someone else's problem out from under them, or
+    # griefing their mastery state. The internal int PK stays purely an
+    # implementation detail for FKs/joins; nothing outside this file ever
+    # sees it.
+    public_id: Mapped[uuid.UUID] = mapped_column(unique=True, default=uuid.uuid4)
     child_id: Mapped[int] = mapped_column(ForeignKey("child.id"))
     skill_id: Mapped[int] = mapped_column(ForeignKey("skill.id"))
     difficulty: Mapped[int]
