@@ -93,6 +93,15 @@ def test_problem_serving_endpoint_enforces_rate_limit(child_id: uuid.UUID) -> No
     assert statuses[-1] == 429
 
 
+def test_get_child_endpoint_enforces_rate_limit(child_id: uuid.UUID) -> None:
+    limit = int(get_settings().general_rate_limit.split("/")[0])
+
+    statuses = [client.get(f"/children/{child_id}").status_code for _ in range(limit + 1)]
+
+    assert statuses.count(200) == limit
+    assert statuses[-1] == 429
+
+
 def test_login_endpoint_enforces_rate_limit() -> None:
     limit = int(get_settings().auth_rate_limit.split("/")[0])
 

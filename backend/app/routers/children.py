@@ -44,12 +44,16 @@ def create_child(
 
 
 @router.get("/{child_id}", response_model=ChildOut)
-def get_child(child_id: uuid.UUID, db: Session = Depends(get_db)) -> ChildOut:
+@limiter.limit(get_settings().general_rate_limit)
+def get_child(request: Request, child_id: uuid.UUID, db: Session = Depends(get_db)) -> ChildOut:
     """Unauthenticated, same as the other child-facing endpoints — see the
     Known gaps section in ARCHITECTURE.md for why. Exists so a returning
     child's localStorage-cached Child (which only reflects the state at
     the moment they last entered their name) picks up a fresh streak on
-    load, without needing a login."""
+    load, without needing a login. Rate-limited like its siblings
+    (`create_child`/`create_problem`) — it's UUID-keyed so not enumerable,
+    but every unauthenticated endpoint is a target regardless, and it was
+    the one left inconsistent with the rest of this file."""
     child = db.scalar(select(Child).where(Child.public_id == child_id))
     if child is None:
         raise HTTPException(status_code=404, detail="child not found")

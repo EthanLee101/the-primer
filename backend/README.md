@@ -58,8 +58,8 @@ billed API calls even with a real key configured for manual testing.
 
 `POST /parents` registers, `POST /parents/login` logs in — both return an
 `access_token` (JWT). Send it as `Authorization: Bearer <token>` on
-`GET /parents/me` and `GET /parents/me/children`. There's no login UI yet
-(that's increment 10); test it directly, e.g.:
+`GET /parents/me` and `GET /parents/me/children`. The frontend's login UI
+(`ParentAuth.tsx`) covers this normally; to test the API directly:
 
 ```bash
 curl -X POST localhost:8000/parents \
@@ -67,12 +67,17 @@ curl -X POST localhost:8000/parents \
   -d '{"email": "you@example.com", "password": "at least 8 characters"}'
 ```
 
+A parent can also set a 4–6 digit PIN (`POST /parents/me/pin`, while
+authenticated) and use `POST /parents/pin-login` (email + PIN) as a faster
+alternative to retyping a password — see `app/auth.py`'s `verify_pin` for
+the enumeration-safety story.
+
 Sessions are bearer tokens, not cookies — see `app/auth.py` for why (short
 version: this API and the frontend are different origins, and cross-origin
 cookies need `SameSite=None`, which disables SameSite's CSRF protection).
-The frontend will hold the token in memory once increment 10 builds the
-login UI, so a page refresh will require logging in again — deliberate,
-not a bug.
+The frontend holds the token in memory only, so a page refresh requires
+logging in again — deliberate, not a bug (PIN login exists specifically to
+make that cheap).
 
 Set `JWT_SECRET_KEY` in `.env` before deploying anywhere real — see the
 comment in `.env.example` for why an unset one is fine for local dev but

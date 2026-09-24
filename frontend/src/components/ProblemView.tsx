@@ -108,6 +108,7 @@ export function ProblemView({ childId, childName, skill, onChangeSkill }: Proble
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [loadingNext, setLoadingNext] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Reset for free on a skill/child change — App.tsx keys this component
@@ -120,13 +121,18 @@ export function ProblemView({ childId, childName, skill, onChangeSkill }: Proble
 
   const loadNextProblem = useCallback(
     async (signal: AbortSignal): Promise<Problem | null> => {
-      setFeedback(null);
-      setAnswer("");
-      setError(null);
       try {
         const next = await fetchProblem(childId, skill);
         if (!signal.aborted) {
+          // clearing feedback/answer only once the new problem has actually
+          // arrived — not before the fetch starts — matters: clearing it
+          // early re-shows an empty, live answer form while `problem` is
+          // still the just-answered one, so a fast second tap (easy on a
+          // touchscreen) resubmits the old attempt and 409s against it
           setProblem(next);
+          setFeedback(null);
+          setAnswer("");
+          setError(null);
           setSessionStartDifficulty((d) => d ?? next.difficulty);
         }
         return next;
@@ -149,7 +155,12 @@ export function ProblemView({ childId, childName, skill, onChangeSkill }: Proble
 
   async function handleSubmit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
-    if (problem === null || answer.trim().length === 0) return;
+    // guard state directly, not just the button's disabled attribute —
+    // that only takes effect after the next render, so a fast double-tap
+    // (easy to do on a touchscreen) can fire a second submit before React
+    // commits it, landing a confusing "attempt already answered" error
+    // underneath the success feedback that's already showing
+    if (problem === null || answer.trim().length === 0 || submitting) return;
 
     setSubmitting(true);
     setError(null);
@@ -170,10 +181,16 @@ export function ProblemView({ childId, childName, skill, onChangeSkill }: Proble
   }
 
   async function handleNext(): Promise<void> {
+    // same reentrancy concern as handleSubmit — a fast double-tap on "Next
+    // problem" before this resolves would otherwise fire two concurrent
+    // fetches and silently orphan one served-but-never-shown attempt
+    if (loadingNext) return;
+    setLoadingNext(true);
     // fetch the next problem regardless — if the session just ended, its
     // difficulty becomes the summary's "end" figure, and it's already
     // loaded and ready the moment the child chooses to keep practicing
     const next = await loadNextProblem(new AbortController().signal);
+    setLoadingNext(false);
     if (next && sessionAnswered >= SESSION_LENGTH && sessionStartDifficulty !== null) {
       setSummary({
         answered: sessionAnswered,
@@ -282,8 +299,12 @@ export function ProblemView({ childId, childName, skill, onChangeSkill }: Proble
                     : (feedback.explanation ??
                       `Not quite — the answer was ${feedback.correctAnswer}.`)}
                 </p>
-                <button className={styles.nextButton} onClick={() => void handleNext()}>
-                  Next problem →
+                <button
+                  className={styles.nextButton}
+                  onClick={() => void handleNext()}
+                  disabled={loadingNext}
+                >
+                  {loadingNext ? "Loading…" : "Next problem →"}
                 </button>
                 <button className={styles.backButton} onClick={handleFinishEarly}>
                   I'm done for now

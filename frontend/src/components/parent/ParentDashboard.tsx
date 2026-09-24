@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import {
   ApiError,
   claimChild,
@@ -36,6 +37,18 @@ export function ParentDashboard({ onBackToChild }: ParentDashboardProps) {
   const [pinConfirm, setPinConfirm] = useState("");
   const [settingPin, setSettingPin] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
+  // collapsed by default, per child — a flat "recent sessions" list gets
+  // long fast, and a parent scanning multiple children reads Mastery first
+  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
+
+  function toggleSessions(childId: string): void {
+    setExpandedSessions((prev) => {
+      const next = new Set(prev);
+      if (next.has(childId)) next.delete(childId);
+      else next.add(childId);
+      return next;
+    });
+  }
 
   const load = useCallback(
     async (signal: AbortSignal) => {
@@ -302,22 +315,53 @@ export function ParentDashboard({ onBackToChild }: ParentDashboardProps) {
             </table>
           )}
 
-          <p className={styles.sectionLabel}>Recent sessions</p>
           {child.recent_attempts.length === 0 ? (
-            <p className={styles.empty}>No attempts yet.</p>
+            <>
+              <p className={styles.sectionLabel}>Recent sessions</p>
+              <p className={styles.empty}>No attempts yet.</p>
+            </>
           ) : (
-            child.recent_attempts.map((attempt, i) => (
-              <div key={i} className={styles.attemptRow}>
-                <span
-                  className={`${styles.attemptDot} ${
-                    attempt.correct ? styles.attemptCorrect : styles.attemptWrong
-                  }`}
-                />
-                <span className={styles.skillName}>{attempt.skill_code}</span>
-                <span>· difficulty {attempt.difficulty}</span>
-                <span>· {new Date(attempt.created_at).toLocaleString()}</span>
-              </div>
-            ))
+            <>
+              <button
+                type="button"
+                className={styles.sessionsToggle}
+                aria-expanded={expandedSessions.has(child.id)}
+                onClick={() => toggleSessions(child.id)}
+              >
+                <span>Recent sessions</span>
+                <span className={styles.sessionsSummary}>
+                  {child.recent_attempts.filter((a) => a.correct).length}/
+                  {child.recent_attempts.length} correct
+                </span>
+                <span className={styles.sessionsBracket} aria-hidden="true">
+                  {expandedSessions.has(child.id) ? "[ − ]" : "[ + ]"}
+                </span>
+              </button>
+              <AnimatePresence initial={false}>
+                {expandedSessions.has(child.id) && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+                    className={styles.sessionsList}
+                  >
+                    {child.recent_attempts.map((attempt, i) => (
+                      <div key={i} className={styles.attemptRow}>
+                        <span
+                          className={`${styles.attemptDot} ${
+                            attempt.correct ? styles.attemptCorrect : styles.attemptWrong
+                          }`}
+                        />
+                        <span className={styles.skillName}>{attempt.skill_code}</span>
+                        <span>· difficulty {attempt.difficulty}</span>
+                        <span>· {new Date(attempt.created_at).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </>
           )}
         </div>
       ))}

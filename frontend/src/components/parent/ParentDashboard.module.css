@@ -239,6 +239,47 @@
   text-transform: capitalize;
 }
 
+/* disclosure trigger for the recent-sessions list — same typographic
+   register as .sectionLabel (mono, caption, tracked, muted) so it reads as
+   a section heading first and a control second */
+.sessionsToggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 20px 0 0;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.sessionsToggle:hover {
+  color: var(--ink);
+}
+
+.sessionsSummary {
+  font-variant-numeric: tabular-nums;
+}
+
+/* bracket notation, not a chevron icon — echoes the specimen-card corner
+   brackets already used on .childCard rather than a generic disclosure glyph */
+.sessionsBracket {
+  margin-left: auto;
+  color: var(--accent);
+}
+
+.sessionsList {
+  overflow: hidden;
+  margin-top: 6px;
+}
+
 .attemptRow {
   display: flex;
   align-items: center;

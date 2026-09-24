@@ -1,11 +1,13 @@
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-# Per-IP, in-memory. There's no auth yet (see ARCHITECTURE.md "Known gaps"),
-# so IP is the only real client boundary available right now. In-memory
-# storage is fine for a single backend instance; a multi-instance deploy
-# would need a shared store (e.g. Redis) so limits are enforced across
-# instances, not per-instance.
+# Per-IP, in-memory. Parent accounts and PIN unlock exist (see
+# ARCHITECTURE.md), but the child-facing endpoints stay deliberately
+# unauthenticated — IP is the only client boundary available for those, and
+# it's applied uniformly here rather than only to the routes that happen to
+# have a login. In-memory storage is fine for a single backend instance; a
+# multi-instance deploy would need a shared store (e.g. Redis) so limits are
+# enforced across instances, not per-instance.
 # key_style="endpoint": slowapi's default buckets by the literal resolved URL
 # path (e.g. "/attempts/256/answer"), so every distinct attempt_id would get
 # its own bucket and never accumulate a count. "endpoint" buckets by the view

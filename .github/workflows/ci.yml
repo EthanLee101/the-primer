@@ -53,7 +53,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - run: npm run test
       # tsc -b (type check) then vite build — the same command Vercel runs
       # to deploy, so a build failure here is caught before it would fail
-      # a real deploy, not just before it merges
+      # a real deploy, not just before it merges. Also the step that
+      # actually type-checks test files — `vitest run` doesn't by default.
       - run: npm run build

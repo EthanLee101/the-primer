@@ -106,9 +106,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const body: unknown = await response.json().catch(() => null);
     const detail =
       body !== null && typeof body === "object" && "detail" in body
-        ? String((body as { detail: unknown }).detail)
-        : `request failed with status ${response.status}`;
-    throw new ApiError(detail);
+        ? (body as { detail: unknown }).detail
+        : null;
+    // Every deliberate HTTPException in the backend (auth failures, 404s,
+    // rate limits, the global 500 handler) sets `detail` as a plain string —
+    // safe to show as-is. Anything else — FastAPI's own 422 validation
+    // shape (`detail` is an array of error objects, not a string), a
+    // non-JSON body (e.g. a platform-level error page during a Render
+    // cold start), or a missing body — must never reach the UI raw. No
+    // status code, no object dump: one friendly, non-technical fallback.
+    throw new ApiError(typeof detail === "string" ? detail : "Oops! Something went wrong. Please try again.");
   }
 
   // 204 (e.g. DELETE /children/{id}) has no body — calling .json() on an

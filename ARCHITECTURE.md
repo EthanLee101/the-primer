@@ -279,6 +279,142 @@ dead-end PIN form. WebAuthn was scoped out of this pass — the handoff
 doc's own step ordering treats PIN alone as sufficient to solve the
 friction problem, with WebAuthn as a later enhancement.
 
+## Post-PIN pass: dashboard disclosure + a security/correctness audit
+
+A deliberate senior-engineer pass, prompted by the user asking directly
+whether the app was resume-ready: a full security review (not just a diff
+review — the whole app), plus a UX fix and a general best-practice sweep.
+A separate UI-polish session (landing-page atmosphere, a visible difficulty
+label, a dashboard stat-tile row) was built, then explicitly reverted by
+the user as not needed for this MVP — noted here, not re-attempted, so a
+future session doesn't rebuild something already declined. Those three
+ideas are back in the reach-ideas list below, unstarted.
+
+**Recent-sessions disclosure** (`ParentDashboard.tsx`, `StatTile`'s
+sibling in spirit but not code — no new component needed). The per-child
+"Recent sessions" list rendered every attempt flat and always-expanded,
+which got long fast — a real complaint, not a hypothetical one, once a
+child has practiced more than a handful of times. Turned into a collapsed-
+by-default disclosure that still shows a summary (`N/M correct`) so a
+parent gets the headline without opening it. Deliberately *not* a generic
+chevron-icon accordion: the toggle is bracket notation (`[ + ]` / `[ − ]`)
+in the dashboard's existing mono/caption register, echoing the
+specimen-card corner-bracket motif already established for this theme
+(`ParentAuth.module.css`'s `.card::before`/`::after`) rather than
+introducing an unrelated icon language. Expand/collapse animates height +
+opacity via the Framer Motion `AnimatePresence` pattern already used
+elsewhere in this app, not a new interaction primitive.
+
+**Security audit findings and fixes** — a full-app read, not scoped to a
+diff. One real, concrete issue, everything else came back clean:
+- **The frontend leaked technical error detail to end users — fixed.**
+  `frontend/src/api.ts`'s `request()` built its thrown `ApiError` message
+  with `String((body as {detail: unknown}).detail)`. FastAPI's own default
+  422 validation-error shape is `{"detail": [{...}, ...]}` — an array of
+  objects, not a string — so `String()` on it rendered literally as
+  `"[object Object]"` (or worse) directly in the UI. A second branch,
+  `` `request failed with status ${response.status}` ``, fired whenever a
+  response had no JSON `detail` at all (a non-JSON body, e.g. a raw
+  platform error page during a Render cold start — a real, documented
+  occurrence in this app, not hypothetical) and leaked a bare HTTP status
+  code. Both are now one rule: `detail` is only ever shown when it's
+  literally a string (true for every deliberate `HTTPException(...,
+  detail="...")` in the backend — auth failures, 404s, rate limits, the
+  global 500 handler's own message); anything else — a validation array, a
+  non-JSON body, a missing body — collapses to one friendly, non-technical
+  fallback: *"Oops! Something went wrong. Please try again."* Verified live
+  by intercepting a real FastAPI 422 response shape and confirming the
+  rendered UI text, not just reading the code.
+- **`GET /children/{child_id}` had no rate limit — fixed.** Its siblings
+  (`POST /children`, `POST /children/{id}/problems`) both carry
+  `general_rate_limit`; this one was inconsistent with the rest of the
+  file. Low real risk on its own (UUID-keyed, not enumerable), but every
+  unauthenticated endpoint is a target regardless of whether any single
+  one looks exploitable in isolation.
+- **A stale code comment** in `app/rate_limit.py` ("There's no auth yet")
+  was corrected — parent auth and PIN auth have existed since well before
+  this pass; a previous session had already flagged this same staleness
+  once and it wasn't fixed then.
+- **Confirmed already solid, no changes needed:** the backend's global
+  exception handler (never leaks exception type/traceback — see
+  `tests/integration/test_error_handling.py`), JWT secret handling, CORS
+  allowlist, ownership scoping on every parent-scoped route, no raw/
+  string-interpolated SQL anywhere (SQLAlchemy Core/ORM throughout), no
+  `dangerouslySetInnerHTML`/`eval` in the frontend, `.env` never committed
+  (checked full git history, not just the current `.gitignore`), and
+  dependency versions with nothing obviously stale.
+
+**A real double-submission race, found while manually verifying the
+dropdown change — not a hypothetical.** Driving the app's actual answer
+flow end-to-end (not just unit-level) surfaced a genuine bug: submitting
+an answer, then quickly loading the next problem, then answering again
+could 409 with "attempt already answered" against the *previous* attempt.
+Root cause: `loadNextProblem` (`ProblemView.tsx`) cleared `feedback`
+(which re-shows the empty answer form) *before* the new problem had
+finished loading — so there was a real window where the form was live and
+interactive but `problem` in state was still the just-answered one. A fast
+second tap during that window — easy to do on a touchscreen, not a
+contrived timing attack — resubmitted the stale attempt. Fixed by
+reordering `loadNextProblem` to only clear `feedback`/`answer`/`error`
+once the new problem has actually arrived, so the form and the problem it's
+bound to always change atomically. Added explicit reentrancy guards on
+both `handleSubmit` and `handleNext` (checking `submitting`/`loadingNext`
+in state directly, not just relying on the button's `disabled` attribute,
+which only takes effect after the next render) as defense in depth beyond
+the ordering fix. Confirmed via live network-request logging against a
+real browser session — three answer submissions, three distinct attempt
+IDs, zero 409s — not just re-reading the code and assuming it's fixed.
+**Was not covered by an automated regression test — fixed in the same
+session.** This app had no frontend test suite at all, so this fix — like
+the earlier StrictMode double-serve bug — was caught and verified live
+rather than pinned by a test. Given this was the second real bug in this
+exact file class to only surface through manual/live testing, introduced a
+minimal Vitest + Testing Library setup and pinned this exact regression
+with it (see "Frontend test suite" below) — verified the pinning is real
+by temporarily reverting the fix and confirming the test actually fails
+against the old code, not just written and assumed correct.
+
+**Frontend test suite** (`vite.config.ts`'s `test` block, `src/test/
+setup.ts`, `npm run test`). Minimal by design — this isn't a push for
+comprehensive coverage, it's targeted regression coverage for the bugs
+that have actually bitten this app, plus the harness to make adding more
+cheap going forward:
+- **Vitest**, not Jest — already sharing Vite's config/transform pipeline
+  (no separate babel/ts-jest setup), and this project's `vite.config.ts`
+  is a natural home for the `test` block. `jsdom` for the DOM environment,
+  `@testing-library/react` + `@testing-library/user-event` for
+  component-level rendering, `@testing-library/jest-dom` for matchers.
+- **Explicit imports over injected globals** (`globals: false`) —
+  consistent with this project's existing `verbatimModuleSyntax`
+  convention, and means zero tsconfig changes were needed for `tsc -b` (in
+  `npm run build`) to type-check test files correctly; it already does,
+  since `tsconfig.app.json`'s `include: ["src"]` picks them up like any
+  other source file. `vitest run` itself doesn't type-check, so `npm run
+  build`'s `tsc -b` remains the thing that actually catches a type error
+  inside a test file — both now run in CI (`.github/workflows/ci.yml`).
+- **`src/test/setup.ts`** stubs `window.matchMedia` and `window.scrollTo`,
+  neither implemented by jsdom — Motion (`motion/react`, used throughout
+  this app's UI) checks the former for `prefers-reduced-motion`, and
+  Testing Library's `userEvent` calls the latter before every click.
+  Without these, every test touching an animated or clicked element would
+  need its own mock, or the suite fills with harmless-but-noisy "not
+  implemented" warnings.
+- **Three files, ten tests, each earning its place**:
+  `src/api.test.ts` pins the error-message fix directly above (a
+  string `detail` passes through, FastAPI's 422 array shape and a
+  non-JSON body both collapse to the friendly fallback, a real status
+  code never leaks). `src/components/ProblemView.test.tsx` pins the
+  double-submission race — the third test in it is the one that actually
+  matters (submitting, loading the next problem, then submitting again
+  hits the *new* attempt id, never the stale one); the first two cover the
+  reentrancy guards at the level Testing Library can realistically
+  exercise them, since a true sub-frame double-tap is React re-render-
+  timing-dependent and isn't reliably reproducible in jsdom.
+  `src/components/parent/ParentDashboard.test.tsx` pins the recent-
+  sessions disclosure (collapsed by default with a correct-ratio summary,
+  expands/collapses on click, no toggle at all when there's nothing to
+  show).
+
 ## Known gaps (tracked, not accidental)
 
 - **Parent auth exists (increment 9); child endpoints still don't require
@@ -484,14 +620,22 @@ friction problem, with WebAuthn as a later enhancement.
   cover that, and is worth adding if this ever runs on a device a child has
   extended unsupervised access to.
 
-## Design & UX reach ideas (not started — next session)
+## Design & UX reach ideas (not started)
 
 Captured at the end of a session, from the user's own critique of the live
 app plus a pasted design brief (typography/color/motion/background
-guidance, avoid generic "AI slop" aesthetics). Not built yet — this is the
-starting brief for tomorrow, with a senior-SWE read on each item: what's
-actually cheap, what's actually risky, and where the framing itself needs
-adjusting before building anything.
+guidance, avoid generic "AI slop" aesthetics). With a senior-SWE read on
+each item: what's actually cheap, what's actually risky, and where the
+framing itself needs adjusting before building anything.
+
+**Landing page richness and difficulty-label legibility (the "cheap"
+option) were both actually built in a later session, then explicitly
+reverted by the user** — built correctly, verified working, but judged not
+needed for this MVP. Left in the list below as still-open ideas rather
+than marked done, since the code no longer exists; don't rebuild them
+without checking the user still wants them. The dashboard stat-tile row
+idea (see "Dashboard / skill-picker / practice-view density" below) got
+the same treatment.
 
 **Worth naming up front**: the existing palette/type choices (Counting
 Blocks, Blueprint Primer — see the tech-stack table) already aren't the
