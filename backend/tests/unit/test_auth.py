@@ -2,7 +2,14 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 
-from app.auth import create_session_token, decode_session_token, hash_password, verify_password
+from app.auth import (
+    create_session_token,
+    decode_session_token,
+    hash_password,
+    hash_pin,
+    verify_password,
+    verify_pin,
+)
 from app.config import get_settings
 
 
@@ -25,6 +32,28 @@ def test_hash_is_never_the_plaintext() -> None:
     hashed = hash_password("correct horse battery staple")
     assert hashed != "correct horse battery staple"
     assert "correct horse battery staple" not in hashed
+
+
+def test_pin_hash_roundtrip() -> None:
+    hashed = hash_pin("1234")
+    assert verify_pin("1234", hashed) is True
+
+
+def test_wrong_pin_fails() -> None:
+    hashed = hash_pin("1234")
+    assert verify_pin("9999", hashed) is False
+
+
+def test_verify_pin_against_missing_account_fails_without_raising() -> None:
+    # None simulates both "no account with this email" and "account exists
+    # but never set a PIN" — must fail closed, not raise, in either case
+    assert verify_pin("anything", None) is False
+
+
+def test_pin_hash_is_never_the_plaintext() -> None:
+    hashed = hash_pin("1234")
+    assert hashed != "1234"
+    assert "1234" not in hashed
 
 
 def test_session_token_roundtrip() -> None:

@@ -41,6 +41,8 @@ def test_register_creates_account_and_returns_session(cleanup_emails: list[str])
     assert "access_token" in body
     assert "password" not in body["parent"]
     assert "password_hash" not in body["parent"]
+    assert "pin_hash" not in body["parent"]
+    assert body["parent"]["has_pin"] is False
 
 
 def test_register_duplicate_email_is_rejected(cleanup_emails: list[str]) -> None:
@@ -93,6 +95,91 @@ def test_login_wrong_password_and_nonexistent_email_give_identical_responses(
     # enumerate which emails have accounts
     assert wrong_password.status_code == no_such_account.status_code == 401
     assert wrong_password.json() == no_such_account.json()
+
+
+def test_set_pin_requires_authentication() -> None:
+    response = client.post("/parents/me/pin", json={"pin": "1234"})
+    assert response.status_code == 401
+
+
+def test_set_pin_rejects_invalid_format(cleanup_emails: list[str]) -> None:
+    cleanup_emails.append("badpin@example.com")
+    reg = client.post(
+        "/parents", json={"email": "badpin@example.com", "password": "correct horse battery"}
+    )
+    token = reg.json()["access_token"]
+
+    response = client.post(
+        "/parents/me/pin",
+        json={"pin": "123"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 422
+
+
+def test_set_pin_accepts_valid_pin(cleanup_emails: list[str]) -> None:
+    cleanup_emails.append("setpin@example.com")
+    reg = client.post(
+        "/parents", json={"email": "setpin@example.com", "password": "correct horse battery"}
+    )
+    token = reg.json()["access_token"]
+
+    response = client.post(
+        "/parents/me/pin",
+        json={"pin": "4321"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["has_pin"] is True
+    assert "pin_hash" not in response.json()
+
+
+def test_pin_login_with_correct_pin(cleanup_emails: list[str]) -> None:
+    cleanup_emails.append("pinlogin@example.com")
+    reg = client.post(
+        "/parents", json={"email": "pinlogin@example.com", "password": "correct horse battery"}
+    )
+    token = reg.json()["access_token"]
+    client.post(
+        "/parents/me/pin", json={"pin": "1234"}, headers={"Authorization": f"Bearer {token}"}
+    )
+
+    response = client.post(
+        "/parents/pin-login", json={"email": "pinlogin@example.com", "pin": "1234"}
+    )
+    assert response.status_code == 200
+    assert "access_token" in response.json()
+
+
+def test_pin_login_wrong_pin_no_pin_set_and_unknown_email_give_identical_responses(
+    cleanup_emails: list[str],
+) -> None:
+    cleanup_emails.append("haspin@example.com")
+    cleanup_emails.append("nopin@example.com")
+    token = client.post(
+        "/parents", json={"email": "haspin@example.com", "password": "correct horse battery"}
+    ).json()["access_token"]
+    client.post(
+        "/parents/me/pin", json={"pin": "1234"}, headers={"Authorization": f"Bearer {token}"}
+    )
+    client.post(
+        "/parents", json={"email": "nopin@example.com", "password": "correct horse battery"}
+    )
+
+    wrong_pin = client.post(
+        "/parents/pin-login", json={"email": "haspin@example.com", "pin": "9999"}
+    )
+    no_pin_set = client.post(
+        "/parents/pin-login", json={"email": "nopin@example.com", "pin": "1234"}
+    )
+    no_such_account = client.post(
+        "/parents/pin-login", json={"email": "nobody-pin@example.com", "pin": "1234"}
+    )
+
+    # identical status + body across all three means a pin-login attempt
+    # can't be used to tell "wrong PIN" from "no PIN set" from "no account"
+    assert wrong_pin.status_code == no_pin_set.status_code == no_such_account.status_code == 401
+    assert wrong_pin.json() == no_pin_set.json() == no_such_account.json()
 
 
 def test_me_requires_authentication() -> None:

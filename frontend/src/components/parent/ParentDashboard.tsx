@@ -6,11 +6,13 @@ import {
   deleteChild,
   fetchChild,
   fetchMyChildren,
+  setPin,
   type AttemptSummary,
   type ChildProgress,
 } from "../../api";
 import { loadSavedChild, saveChild } from "../../childStorage";
 import { useAuth } from "../../auth/useAuth";
+import { rememberParentEmail } from "../../parentEmailStorage";
 import { PracticeHistoryChart } from "./PracticeHistoryChart";
 import styles from "./ParentDashboard.module.css";
 
@@ -23,12 +25,17 @@ function formatMastery(pKnow: number): string {
 }
 
 export function ParentDashboard({ onBackToChild }: ParentDashboardProps) {
-  const { token, parent, logout } = useAuth();
+  const { token, parent, logout, updateParent } = useAuth();
   const [children, setChildren] = useState<ChildProgress[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [claiming, setClaiming] = useState(false);
   const [newChildName, setNewChildName] = useState("");
   const [addingChild, setAddingChild] = useState(false);
+  const [pinFormOpen, setPinFormOpen] = useState(false);
+  const [pinValue, setPinValue] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
+  const [settingPin, setSettingPin] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
 
   const load = useCallback(
     async (signal: AbortSignal) => {
@@ -108,6 +115,30 @@ export function ParentDashboard({ onBackToChild }: ParentDashboardProps) {
     }
   }
 
+  async function handleSetPin(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    if (token === null) return;
+    if (pinValue !== pinConfirm) {
+      setPinError("PINs don't match.");
+      return;
+    }
+    setSettingPin(true);
+    setPinError(null);
+    try {
+      const updated = await setPin(pinValue, token);
+      updateParent(updated);
+      // this device now opts in to the quick-unlock form on next login
+      rememberParentEmail(updated.email);
+      setPinValue("");
+      setPinConfirm("");
+      setPinFormOpen(false);
+    } catch (err) {
+      setPinError(err instanceof ApiError ? err.message : "Couldn't reach the Primer.");
+    } finally {
+      setSettingPin(false);
+    }
+  }
+
   async function handleDelete(childId: string, name: string): Promise<void> {
     if (token === null) return;
     // no custom modal system in this app yet — a native confirm is
@@ -135,11 +166,48 @@ export function ParentDashboard({ onBackToChild }: ParentDashboardProps) {
           <button className={styles.linkButton} onClick={onBackToChild}>
             ← back to Primer
           </button>
+          <button
+            className={styles.linkButton}
+            onClick={() => setPinFormOpen((open) => !open)}
+          >
+            {parent?.has_pin ? "Change quick-unlock PIN" : "Set a quick-unlock PIN"}
+          </button>
           <button className={styles.linkButton} onClick={logout}>
             Log out
           </button>
         </div>
       </div>
+
+      {pinFormOpen && (
+        <form className={styles.pinForm} onSubmit={(e) => void handleSetPin(e)}>
+          <input
+            className={styles.addChildInput}
+            type="password"
+            inputMode="numeric"
+            pattern="\d{4,6}"
+            maxLength={6}
+            placeholder="New PIN (4-6 digits)"
+            value={pinValue}
+            onChange={(e) => setPinValue(e.target.value)}
+            required
+          />
+          <input
+            className={styles.addChildInput}
+            type="password"
+            inputMode="numeric"
+            pattern="\d{4,6}"
+            maxLength={6}
+            placeholder="Confirm PIN"
+            value={pinConfirm}
+            onChange={(e) => setPinConfirm(e.target.value)}
+            required
+          />
+          <button className={styles.addChildButton} type="submit" disabled={settingPin}>
+            {settingPin ? "Saving…" : "Save PIN"}
+          </button>
+          {pinError && <p className={styles.error}>{pinError}</p>}
+        </form>
+      )}
 
       {showClaimBanner && savedChild && (
         <div className={styles.claimBanner}>

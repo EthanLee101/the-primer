@@ -107,3 +107,17 @@ def test_login_endpoint_enforces_rate_limit() -> None:
     # should be blocked by the rate limiter before credentials are even checked
     assert statuses.count(401) == limit
     assert statuses[-1] == 429
+
+
+def test_pin_login_endpoint_enforces_rate_limit() -> None:
+    limit = int(get_settings().auth_rate_limit.split("/")[0])
+
+    statuses = [
+        client.post(
+            "/parents/pin-login", json={"email": "nobody@example.com", "pin": "1234"}
+        ).status_code
+        for _ in range(limit + 1)
+    ]
+
+    assert statuses.count(401) == limit
+    assert statuses[-1] == 429

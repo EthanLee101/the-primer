@@ -46,6 +46,27 @@ def verify_password(password: str, password_hash: str | None) -> bool:
     return password_hash is not None
 
 
+# Same dummy-hash timing-safety trick as _DUMMY_HASH, for the PIN unlock
+# path (POST /parents/pin-login).
+_DUMMY_PIN_HASH = _hasher.hash("not-a-real-pin-timing-safety-only")
+
+
+def hash_pin(pin: str) -> str:
+    return _hasher.hash(pin)
+
+
+def verify_pin(pin: str, pin_hash: str | None) -> bool:
+    # pin_hash is None in two distinct cases: the parent doesn't exist, or
+    # they exist but never set a PIN. Both must fail identically — timing,
+    # status code, and response body — so pin-login can't be used to probe
+    # which case it is.
+    try:
+        _hasher.verify(pin_hash or _DUMMY_PIN_HASH, pin)
+    except Exception:
+        return False
+    return pin_hash is not None
+
+
 def create_session_token(parent_id: int) -> str:
     settings = get_settings()
     expires_at = datetime.now(UTC) + timedelta(minutes=settings.jwt_expires_minutes)

@@ -237,6 +237,48 @@ deliberate limit: only resolves for one active child per device;
 sharing a device still hits the profile-picker problem — not solved here,
 worth revisiting if it matters later.
 
+**Parent dashboard PIN unlock.** Answers the reach-idea this doc previously
+flagged ("Parent PIN for dashboard access") — a full email+password
+re-login every time a parent hands the shared device back to their kid was
+too much friction for regular use. Started from an external handoff doc
+proposing a broader redesign (httpOnly refresh cookie, an
+`isDashboardUnlocked` route-gate state, WebAuthn + PIN, a kid-scoped token
+with middleware enforcement); two of its pieces conflicted with decisions
+already made here and were deliberately not adopted:
+- The parent's JWT is still fully discarded (`logout()`) on every switch
+  back to kid mode, exactly as the earlier "dashboard stayed unlocked
+  after handing the device back" fix established — a live token sitting in
+  JS memory reachable via devtools during kid mode was the whole problem
+  that fix closed, and the handoff's "never invalidate the auth session"
+  model would have reopened it without also building the scoped-token/
+  middleware layer up front.
+- The token stays memory-only bearer, not an httpOnly cookie — frontend
+  (Vercel) and backend (Render) are different origins, and a cross-origin
+  cookie needs `SameSite=None`, which would disable the CSRF protection
+  the bearer-token design gets for free (see the Parent auth row above and
+  `app/auth.py`'s module docstring).
+
+Given both of those, "unlocking" the dashboard is just acquiring a fresh
+token faster, not reviving an old one — so the shipped design is simpler
+than the handoff's literal model: `Parent.pin_hash` (nullable, Argon2id,
+`app/models.py`), set via `POST /parents/me/pin` while already
+authenticated, and a new `POST /parents/pin-login` (email + PIN → a normal
+fresh session JWT) that mirrors password `login`'s rate limiting
+(`auth_rate_limit`, 5/min/IP) and its enumeration-safety trick — verifying
+against a dummy hash so "wrong PIN," "no PIN set," and "no such account"
+are indistinguishable in status, body, and timing (`verify_pin`,
+`app/auth.py`). No new token type, scope claim, or `isDashboardUnlocked`
+state was needed: token presence was already the dashboard's only gate
+(`ParentArea`, `App.tsx`), and stays true. The only new client-side
+persistence is the parent's email in `localStorage`
+(`parentEmailStorage.ts`) — not a credential, just what lets `ParentAuth.tsx`
+default to a PIN-entry form instead of the full login form; it's only
+remembered when the account actually has a PIN set (`has_pin` on
+`ParentOut`), so an account without one never gets stuck defaulting to a
+dead-end PIN form. WebAuthn was scoped out of this pass — the handoff
+doc's own step ordering treats PIN alone as sufficient to solve the
+friction problem, with WebAuthn as a later enhancement.
+
 ## Known gaps (tracked, not accidental)
 
 - **Parent auth exists (increment 9); child endpoints still don't require
@@ -272,6 +314,17 @@ worth revisiting if it matters later.
   `app/config.py`) — a separate setting from `ANSWER_RATE_LIMIT` since its
   purpose is different (generic abuse/spam prevention, not bounding a paid
   API's quota).
+- **`POST /parents/pin-login` reuses `auth_rate_limit` (5/min/IP) — accepted
+  parity with password login, not a verified equivalent.** A 4–6 digit PIN
+  has a far smaller keyspace than a password, so the same rate limit is a
+  real, smaller margin of protection even though the mechanism is
+  identical. At 5/min/IP, exhausting a 4-digit PIN space against a known
+  email is a sustained, single-IP, multi-hour effort the limiter would
+  need to survive uninterrupted — not nothing, but worth tightening
+  (a dedicated `pin_login_rate_limit`, or a persistent per-account lockout
+  counter) if this were ever more than a portfolio project. Documented
+  here rather than silently assuming parity with password login means
+  parity of actual risk.
 - **Answer grading trusts the server, not the client.** When a problem is
   served (`POST /children/{id}/problems`), the operands are persisted to the
   `attempt` row immediately; grading (`POST /attempts/{id}/answer`) checks
@@ -430,6 +483,71 @@ worth revisiting if it matters later.
   without explicitly switching back — a session-inactivity timeout would
   cover that, and is worth adding if this ever runs on a device a child has
   extended unsupervised access to.
+
+## Design & UX reach ideas (not started — next session)
+
+Captured at the end of a session, from the user's own critique of the live
+app plus a pasted design brief (typography/color/motion/background
+guidance, avoid generic "AI slop" aesthetics). Not built yet — this is the
+starting brief for tomorrow, with a senior-SWE read on each item: what's
+actually cheap, what's actually risky, and where the framing itself needs
+adjusting before building anything.
+
+**Worth naming up front**: the existing palette/type choices (Counting
+Blocks, Blueprint Primer — see the tech-stack table) already aren't the
+generic pattern the pasted brief warns about — no Inter/Arial, no purple
+gradient, chosen specifically to dodge a documented near-collision with
+another portfolio project (see Known gaps). The "bland" feeling reported
+is more precisely a **depth/atmosphere** problem than a palette problem: a
+centered card on a mostly flat background, with a lot of unfilled space
+around it. Worth keeping that distinction sharp so tomorrow's work fixes
+the actual issue (layering, motion, density) rather than re-picking colors
+that were already deliberately chosen.
+
+- **Landing page richness.** Add atmosphere/depth per the pasted brief's
+  own guidance — layered gradients, a geometric or illustrative pattern
+  drawing on the existing "Counting Blocks" bead motif, more elaborate
+  typographic treatment for the title. Keep the existing staggered-reveal
+  entrance animation (already aligned with the brief's "one
+  well-orchestrated page load" guidance) and extend it to more elements
+  rather than replacing it.
+- **Navbar — scope it to landing/About, not the whole app.** A persistent
+  nav helps discoverability in the pre-practice, adult-facing context. It
+  actively fights the child-facing screens (`SkillPicker`, `ProblemView`),
+  which are deliberately minimal-chrome by original design intent — large
+  targets, nothing competing with the problem on screen. Recommend: add it
+  to `NameEntry`/`About`, leave the practice flow alone, revisit only if
+  that turns out wrong in practice.
+- **Guided tour.** A parent-triggered walkthrough explaining the interface
+  (what the bead rail means, how streaks work, how to answer) — genuinely
+  useful, and buildable without a new dependency: a custom spotlight
+  overlay (highlight a target element, dim the rest, step through with
+  "next") matches this app's existing pattern of hand-rolling rather than
+  pulling in a library (same reasoning that kept the practice-history
+  chart off a charting library this session).
+- **Difficulty indicator legibility.** The bead rail is ambiguous to a
+  child — dots don't inherently read as "how hard this is." Two options at
+  very different cost, don't assume the expensive one is needed:
+  - Cheap: add a text label alongside the existing beads ("Level 3" / "Getting
+    tricky!"). Five-minute change, keeps the existing visual investment.
+  - Bigger: replace with a fill-bar (games already teach kids this
+    pattern via health/XP bars) or a leveled badge system bucketing the
+    1–10 range into fewer named tiers. A real redesign, not a tweak.
+  - The guided tour above could also just *explain* the existing beads
+    instead of replacing them — try the free fix before the expensive one.
+- **Dashboard / skill-picker / practice-view density.** Brainstormed
+  per-screen rather than one generic "add stuff" — each has a different
+  job:
+  - Parent dashboard: a stat-tile row per child (streak, this week's
+    accuracy, total attempts) above the existing mastery table — the
+    dataviz skill (used for the practice-history chart this session) has
+    a stat-tile pattern that fits this directly.
+  - Skill picker: background pattern/illustration behind the 2×2 skill
+    grid (echoing the landing page's richness work), maybe a small
+    per-skill preview (current difficulty or best streak on each button).
+  - Problem view: the card is intentionally the focal point during actual
+    problem-solving — richness here should stay in the *background*
+    (pattern/texture/motion), not compete with the input for attention.
 
 ## Working agreement
 

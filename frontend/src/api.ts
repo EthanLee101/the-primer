@@ -34,6 +34,7 @@ export interface Parent {
   id: number;
   email: string;
   created_at: string;
+  has_pin: boolean;
 }
 
 export interface Session {
@@ -162,6 +163,21 @@ export function loginParent(email: string, password: string): Promise<Session> {
   return request<Session>("/parents/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
+  });
+}
+
+export function loginWithPin(email: string, pin: string): Promise<Session> {
+  return request<Session>("/parents/pin-login", {
+    method: "POST",
+    body: JSON.stringify({ email, pin }),
+  });
+}
+
+export function setPin(pin: string, token: string): Promise<Parent> {
+  return request<Parent>("/parents/me/pin", {
+    method: "POST",
+    body: JSON.stringify({ pin }),
+    headers: authHeaders(token),
   });
 }
 

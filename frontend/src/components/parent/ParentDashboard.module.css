@@ -95,6 +95,13 @@
   margin-bottom: 24px;
 }
 
+.pinForm {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
 .addChildInput {
   flex: 1;
   font-family: var(--font-body);

@@ -154,3 +154,27 @@
   font-size: var(--text-body);
   margin: 0;
 }
+
+.linkButton {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  cursor: pointer;
+  padding: 4px;
+  margin-top: 16px;
+}
+
+.pinFallbacks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 16px;
+}
+
+.pinFallbacks .linkButton {
+  margin-top: 0;
+  text-align: left;
+  padding: 0;
+}

@@ -12,6 +12,10 @@ export interface AuthState {
   parent: Parent | null;
   login: (session: Session) => void;
   logout: () => void;
+  // Refreshes the displayed parent (e.g. has_pin flipping true after
+  // setting a PIN) without touching the token — cannot be used to
+  // establish a session on its own, only to update an already-authenticated one.
+  updateParent: (parent: Parent) => void;
 }
 
 // Context + Provider in one file is the standard React pattern; fully
@@ -36,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(null);
       setParent(null);
     },
+    updateParent: (parent) => setParent(parent),
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

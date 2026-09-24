@@ -3,7 +3,14 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.auth import create_session_token, get_current_parent, hash_password, verify_password
+from app.auth import (
+    create_session_token,
+    get_current_parent,
+    hash_password,
+    hash_pin,
+    verify_password,
+    verify_pin,
+)
 from app.config import get_settings
 from app.db import get_db
 from app.models import Attempt, Child, Mastery, Parent
@@ -14,6 +21,8 @@ from app.schemas import (
     MasterySummary,
     ParentCredentials,
     ParentOut,
+    PinLogin,
+    PinSet,
     SessionOut,
 )
 
@@ -55,6 +64,32 @@ def login(
     assert parent is not None  # verify_password only returns True for a real parent
     token = create_session_token(parent.id)
     return SessionOut(access_token=token, parent=ParentOut.model_validate(parent))
+
+
+@router.post("/pin-login", response_model=SessionOut)
+@limiter.limit(get_settings().auth_rate_limit)
+def pin_login(request: Request, payload: PinLogin, db: Session = Depends(get_db)) -> SessionOut:
+    parent = db.scalar(select(Parent).where(Parent.email == payload.email.lower()))
+    # always verify, even when parent is None or has no PIN set — keeps
+    # response timing and the error message below identical across all
+    # three failure cases, same reasoning as password login
+    if not verify_pin(payload.pin, parent.pin_hash if parent else None):
+        raise HTTPException(status_code=401, detail="Invalid email or PIN.")
+
+    assert parent is not None  # verify_pin only returns True for a real parent with a PIN set
+    token = create_session_token(parent.id)
+    return SessionOut(access_token=token, parent=ParentOut.model_validate(parent))
+
+
+@router.post("/me/pin", response_model=ParentOut)
+def set_pin(
+    payload: PinSet, parent: Parent = Depends(get_current_parent), db: Session = Depends(get_db)
+) -> Parent:
+    # no separate rate limit — the bearer-auth requirement is the real gate
+    parent.pin_hash = hash_pin(payload.pin)
+    db.commit()
+    db.refresh(parent)
+    return parent
 
 
 @router.get("/me", response_model=ParentOut)

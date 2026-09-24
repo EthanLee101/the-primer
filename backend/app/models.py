@@ -14,9 +14,18 @@ class Parent(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    # nullable: PIN unlock is opt-in, set later via POST /parents/me/pin,
+    # never at registration. Hashed with the same Argon2id hasher as
+    # password_hash — brute-force resistance for the small PIN keyspace
+    # comes from pin-login's rate limit, not from hash strength.
+    pin_hash: Mapped[str | None] = mapped_column(String(255), default=None)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     children: Mapped[list["Child"]] = relationship(back_populates="parent")
+
+    @property
+    def has_pin(self) -> bool:
+        return self.pin_hash is not None
 
 
 class Child(Base):

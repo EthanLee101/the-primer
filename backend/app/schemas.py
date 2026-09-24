@@ -52,6 +52,7 @@ class ParentOut(BaseModel):
     id: int
     email: str
     created_at: datetime
+    has_pin: bool
 
     model_config = {"from_attributes": True}
 
@@ -59,6 +60,19 @@ class ParentOut(BaseModel):
 class SessionOut(BaseModel):
     access_token: str
     parent: ParentOut
+
+
+class PinSet(BaseModel):
+    # 4-6 digit numeric PIN, kept as a string (not int) — leading zeros are
+    # valid and nothing ever does arithmetic on it. The regex is a format
+    # guard only; the small keyspace is defended by pin-login's rate limit,
+    # not by format strictness.
+    pin: str = Field(pattern=r"^\d{4,6}$")
+
+
+class PinLogin(BaseModel):
+    email: EmailStr
+    pin: str = Field(pattern=r"^\d{4,6}$")
 
 
 class MasterySummary(BaseModel):
