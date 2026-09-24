@@ -53,11 +53,11 @@ decision below; update the resume text to match once this ships.)
 | Database | PostgreSQL | Relational fit: children → skills → attempts |
 | DB hosting | **Neon** | Decided this session |
 | Local DB dev | Docker Compose | Wired up in increment 2 |
-| App hosting | **Fly.io** (backend) | Decided this session |
+| App hosting | **Render** (backend) | Originally planned as Fly.io; switched during increment 12 — Fly requires a credit card on file even for its free tier, Render doesn't (verified directly, not assumed). Trade-off: Render's free web services sleep after 15 minutes idle and take about a minute to wake on the next request — acceptable for a portfolio demo, but worth knowing if a visitor hits a cold start. Bigger consequence: Render's pre-deploy command (their equivalent of a separate release-time migration step) is a paid-tier-only feature, so `backend/Dockerfile`'s `CMD` runs `alembic upgrade head` itself before starting uvicorn, rather than relying on a platform hook — idempotent, so safe on every restart including sleep/wake cycles, and portable to any host regardless of whether it offers a release-command feature. `$PORT` is also read dynamically (`${PORT:-8000}`) since Render assigns it, unlike Fly's fixed internal port. |
 | Frontend hosting | Vercel | Carried over from original plan, not revisited |
 | LLM provider | **Gemini API** via `google-genai` | Switched from OpenAI in an earlier session — free tier. `google-generativeai` (the original scaffold's pick) is the now-superseded SDK; `google-genai` (`from google import genai`) is current, confirmed increment 8. Used only for wrong-answer explanations/encouragement (`app/llm.py`), kept out of the grading path — arithmetic correctness stays deterministic, and any Gemini failure degrades to "no explanation this time," never a failed request. |
 | Rate limiting | slowapi, per-IP, `20/minute` on `POST /attempts/{id}/answer` | Bounds free-tier Gemini cost/quota exposure. `key_style="endpoint"` (not slowapi's default `"url"`) — the default buckets by literal resolved path, so a route with a path param like `{attempt_id}` never accumulates a shared count. In-memory storage, single-instance only; a multi-instance deploy needs a shared store (Redis) — not needed yet. Added increment 8. |
-| Error handling | Global exception handler (`app/main.py`) + per-call server-side logging | Any unhandled exception returns a generic `{"detail": "Something went wrong..."}` (500) to the client — never a message, exception type, or traceback. Full detail goes to server logs only (`app/logging_config.py`, stdout — Fly.io captures it natively). Deliberate `HTTPException`s (404/400/409) are unaffected; only genuinely unexpected failures are caught. Added increment 8, but applies API-wide. |
+| Error handling | Global exception handler (`app/main.py`) + per-call server-side logging | Any unhandled exception returns a generic `{"detail": "Something went wrong..."}` (500) to the client — never a message, exception type, or traceback. Full detail goes to server logs only (`app/logging_config.py`, stdout — the host's container platform captures it natively). Deliberate `HTTPException`s (404/400/409) are unaffected; only genuinely unexpected failures are caught. Added increment 8, but applies API-wide. |
 | Adaptivity engine | Bayesian Knowledge Tracing (`app/mastery.py`) | Replaced the increment-5 rolling-accuracy engine in increment 11. Tracks `p_know` per (child, skill) — a Bayesian posterior updated on every attempt from fixed `P_SLIP`/`P_GUESS` evidence parameters, then a transition step. Deliberate departure from textbook BKT (Corbett & Anderson, 1994): added a `P_FORGET` parameter (a knowing→not-knowing transition) alongside the standard `P_TRANSIT` (not-knowing→knowing) one. Vanilla BKT only models learning — mastery is treated as sticky once reached — which is wrong for this product: difficulty needs to track a child's *current* performance and come back down if they start missing problems, not stay pinned at a peak from an early hot streak. Without forgetting, `p_know` also saturates at exactly 1.0 in floating point (`1 - p_know` underflows to 0) and gets permanently stuck; `P_FORGET` fixes that too. All five constants (`P_INIT=0.05`, `P_TRANSIT=0.02`, `P_FORGET=0.05`, `P_SLIP=0.1`, `P_GUESS=0.1`) are engineering-tuned starting points — picked by simulating attempt sequences — not values fit from real usage data; a production system would fit these per skill via EM on logged attempts. Served difficulty is *not* read directly off `p_know` — `next_difficulty()` rate-limits it to move at most `MAX_DIFFICULTY_STEP=1` level per attempt (see Known gaps below for why this was added after increment 11 shipped). `p_know` itself is never rate-limited, only its effect on the served difficulty. See `tests/unit/test_mastery.py` for the pinned math (one hand-computed Bayes update) and the behavioral invariants. |
 | CI | GitHub Actions | Set up in increment 1 |
 | Parent auth | Argon2id (`argon2-cffi`) + JWT bearer tokens (`pyjwt`) | Argon2id: OWASP's current top password-hashing recommendation. Bearer token over cookies deliberately — cross-origin cookies need `SameSite=None`, which disables CSRF protection; a bearer token sidesteps CSRF entirely since browsers don't auto-attach headers cross-site. Token held in frontend memory only (never `localStorage`) — trade-off: refresh logs the parent out, no persistence yet. `POST /parents` and `POST /parents/login` rate-limited (`5/minute`/IP) against brute-force; login timing/error message identical for "wrong password" and "no such account" (no email enumeration). Added increment 9. |
@@ -102,7 +102,7 @@ commits — Claude stages changes but does not commit.
     adaptivity engine row above for the model and its parameters.
 **Pre-12 hardening + a product feature, done ahead of the public deploy.**
 Not its own numbered increment — this grew directly out of deciding the
-deploy target (Fly.io, backend; Vercel, frontend — see the App/Frontend
+deploy target (Render, backend; Vercel, frontend — see the App/Frontend
 hosting rows) would be linked from a public portfolio, which is a real
 change in exposure from localhost-only. Two pieces:
 - Opaque child/attempt IDs + broadened rate limiting — closes the
@@ -122,10 +122,10 @@ change in exposure from localhost-only. Two pieces:
   session-by-session history instead of a flat recent-attempts list) is a
   natural next step, not attempted here.
 
-12. **Deployment & polish** — backend → Fly.io, DB → Neon, frontend →
+12. **Deployment & polish** — backend → Render, DB → Neon, frontend →
     Vercel; secrets/env config; stretch (second skill domain / theming) if
     time allows.
-    🌐 **Needs Neon, Fly.io, and Vercel accounts** — nothing before this
+    🌐 **Needs Neon, Render, and Vercel accounts** — nothing before this
     increment requires anything outside local Docker Postgres.
 
 > Note: this 12-step breakdown was reconstructed from
