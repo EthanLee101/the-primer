@@ -89,6 +89,43 @@
   font-size: var(--text-h4);
 }
 
+.addChildForm {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.addChildInput {
+  flex: 1;
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  padding: 10px 12px;
+  border-radius: 4px;
+  border: 1.5px solid var(--panel-border);
+  background: var(--input-bg);
+  color: var(--ink);
+}
+
+.addChildButton {
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: var(--text-caption);
+  letter-spacing: 0.04em;
+  background: var(--gold);
+  color: var(--ink);
+  border: none;
+  border-radius: 4px;
+  padding: 10px 16px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.addChildButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .childCard {
   background: var(--panel);
   border: 1.5px solid var(--panel-border);
@@ -124,6 +161,13 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.childCardActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .childName {

@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,
   claimChild,
+  createChild,
   deleteChild,
+  fetchChild,
   fetchMyChildren,
   type AttemptSummary,
   type ChildProgress,
 } from "../../api";
-import { loadSavedChild } from "../../childStorage";
+import { loadSavedChild, saveChild } from "../../childStorage";
 import { useAuth } from "../../auth/useAuth";
 import { PracticeHistoryChart } from "./PracticeHistoryChart";
 import styles from "./ParentDashboard.module.css";
@@ -25,6 +27,8 @@ export function ParentDashboard({ onBackToChild }: ParentDashboardProps) {
   const [children, setChildren] = useState<ChildProgress[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [claiming, setClaiming] = useState(false);
+  const [newChildName, setNewChildName] = useState("");
+  const [addingChild, setAddingChild] = useState(false);
 
   const load = useCallback(
     async (signal: AbortSignal) => {
@@ -63,6 +67,44 @@ export function ParentDashboard({ onBackToChild }: ParentDashboardProps) {
       setError(err instanceof ApiError ? err.message : "Couldn't reach the Primer.");
     } finally {
       setClaiming(false);
+    }
+  }
+
+  async function handleAddChild(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    const trimmed = newChildName.trim();
+    if (token === null || trimmed.length === 0) return;
+
+    setAddingChild(true);
+    setError(null);
+    try {
+      // token attached — POST /children auto-links to this parent, no
+      // separate claim step needed (see createChild's comment in api.ts)
+      const child = await createChild(trimmed, token);
+      // makes this child the one that resumes on this device — the same
+      // mechanism NameEntry uses after anonymous creation, and the actual
+      // "same device, no retyping a name" hand-off for the child
+      saveChild(child);
+      setNewChildName("");
+      await load(new AbortController().signal);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't reach the Primer.");
+    } finally {
+      setAddingChild(false);
+    }
+  }
+
+  async function handlePracticeOnThisDevice(childId: string): Promise<void> {
+    // ChildProgress (this dashboard's per-child summary) doesn't carry
+    // created_at/current_streak, so a fresh fetch here rather than
+    // synthesizing fake values for fields the child view doesn't actually
+    // use anyway (SkillPicker re-fetches streak on its own mount)
+    try {
+      const child = await fetchChild(childId);
+      saveChild(child);
+      onBackToChild();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't reach the Primer.");
     }
   }
 
@@ -111,6 +153,19 @@ export function ParentDashboard({ onBackToChild }: ParentDashboardProps) {
         </div>
       )}
 
+      <form className={styles.addChildForm} onSubmit={(e) => void handleAddChild(e)}>
+        <input
+          className={styles.addChildInput}
+          value={newChildName}
+          onChange={(e) => setNewChildName(e.target.value)}
+          placeholder="Add a child by name"
+          maxLength={100}
+        />
+        <button className={styles.addChildButton} type="submit" disabled={addingChild}>
+          {addingChild ? "Adding…" : "Add child"}
+        </button>
+      </form>
+
       {error && <p className={styles.error}>{error}</p>}
 
       {children === null && !error && <p className={styles.empty}>Loading…</p>}
@@ -126,12 +181,20 @@ export function ParentDashboard({ onBackToChild }: ParentDashboardProps) {
         <div key={child.id} className={styles.childCard}>
           <div className={styles.childCardHeader}>
             <h2 className={styles.childName}>{child.name}</h2>
-            <button
-              className={styles.removeButton}
-              onClick={() => void handleDelete(child.id, child.name)}
-            >
-              Remove
-            </button>
+            <div className={styles.childCardActions}>
+              <button
+                className={styles.removeButton}
+                onClick={() => void handlePracticeOnThisDevice(child.id)}
+              >
+                Practice on this device
+              </button>
+              <button
+                className={styles.removeButton}
+                onClick={() => void handleDelete(child.id, child.name)}
+              >
+                Remove
+              </button>
+            </div>
           </div>
 
           <p className={styles.sectionLabel}>Mastery</p>

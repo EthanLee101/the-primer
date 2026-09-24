@@ -218,6 +218,25 @@ repeated here):
   match validation before submit; purely a typo guard, the backend never
   sees or validates a "confirm" field.
 
+**Parent-led child creation** (light scope — coexists with the anonymous
+flow, doesn't replace it). Prompted by revisiting whether parents should
+sign their kids up, deliberately deferred earlier this session as too big
+to do alongside the hardening pass; this is the scoped-down version of
+that. `POST /children` already accepted an optional authenticated parent
+and auto-linked (`get_current_parent_optional`, `app/auth.py`) — that's
+the exact mechanism `claim_child` exists to work around for the *other*
+direction — so this needed zero backend changes. `ParentDashboard.tsx`
+gained an "Add a child" form (calls `createChild` with the parent's
+token, now optional on that function — `frontend/src/api.ts`) and a
+"Practice on this device" button per child, both writing to
+`childStorage.ts`'s saved child so `ChildArea` (`App.tsx`) resumes
+straight to the skill picker — no retyping a name, which is what actually
+delivers "parent adds a child → child picks up the same device." Known,
+deliberate limit: only resolves for one active child per device;
+`childStorage.ts` stores a single saved child, so two dashboard-added kids
+sharing a device still hits the profile-picker problem — not solved here,
+worth revisiting if it matters later.
+
 ## Known gaps (tracked, not accidental)
 
 - **Parent auth exists (increment 9); child endpoints still don't require

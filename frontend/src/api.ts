@@ -117,10 +117,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function createChild(name: string): Promise<Child> {
+// token is optional — the anonymous name-entry flow calls this with none
+// (POST /children works fine unauthenticated); a logged-in parent adding a
+// child from the dashboard passes theirs so the backend auto-links it
+// (see get_current_parent_optional in app/auth.py), skipping the claim step
+export function createChild(name: string, token?: string): Promise<Child> {
   return request<Child>("/children", {
     method: "POST",
     body: JSON.stringify({ name }),
+    headers: token ? authHeaders(token) : undefined,
   });
 }
 
