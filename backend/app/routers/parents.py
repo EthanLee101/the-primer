@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.auth import create_session_token, get_current_parent, hash_password, verify_password
 from app.config import get_settings
@@ -70,7 +70,14 @@ def my_children(
 
     result = []
     for child in children:
-        masteries = db.scalars(select(Mastery).where(Mastery.child_id == child.id)).all()
+        # selectinload(.skill): without it, each m.skill.code / a.skill.code
+        # access below lazy-loads individually — bounded by the 4 distinct
+        # skill rows rather than a true N-per-row blowup (SQLAlchemy's
+        # identity map dedupes repeats within a session), but still an
+        # avoidable extra query per newly-seen skill. One join eliminates it.
+        masteries = db.scalars(
+            select(Mastery).where(Mastery.child_id == child.id).options(selectinload(Mastery.skill))
+        ).all()
         recent = db.scalars(
             select(Attempt)
             # answered only — a served-but-never-answered attempt (a child
@@ -82,7 +89,11 @@ def my_children(
             # server-side even though the client only ever displays one.
             .where(Attempt.child_id == child.id, Attempt.answered_at.is_not(None))
             .order_by(Attempt.created_at.desc())
-            .limit(10)
+            # 30, not 10 — this is shared across all of a child's skills, newest
+            # first, so a child practicing multiple skills could otherwise get a
+            # near-empty per-skill slice on the dashboard's practice-history chart.
+            .limit(30)
+            .options(selectinload(Attempt.skill))
         ).all()
         result.append(
             ChildProgress(

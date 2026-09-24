@@ -12,6 +12,7 @@ export interface Child {
   id: string;
   name: string;
   created_at: string;
+  current_streak: number;
 }
 
 export interface Problem {
@@ -64,14 +65,41 @@ export interface ChildProgress {
 
 export class ApiError extends Error {}
 
+// Without this, a hung backend (a Render cold start, or a genuine network
+// stall) leaves the UI stuck indefinitely — no error, no recovery path,
+// just a button that says "Checking…" forever. fetch() has no default
+// timeout of its own.
+const REQUEST_TIMEOUT_MS = 15_000;
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  // spreading ...init after headers would silently drop Content-Type
-  // whenever a caller sets its own headers (e.g. authHeaders) — merge
-  // properly instead so both can be present at once
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
+  // combine with any caller-supplied signal (none currently pass one, but
+  // this stays correct if one ever does) rather than silently overriding it
+  const signal = init?.signal
+    ? AbortSignal.any([init.signal, timeoutController.signal])
+    : timeoutController.signal;
+
+  let response: Response;
+  try {
+    // spreading ...init after headers would silently drop Content-Type
+    // whenever a caller sets its own headers (e.g. authHeaders) — merge
+    // properly instead so both can be present at once
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      signal,
+      headers: { "Content-Type": "application/json", ...init?.headers },
+    });
+  } catch (err) {
+    // distinguish our own timeout from a caller-initiated cancel or a
+    // genuine network failure, which should surface as-is
+    if (timeoutController.signal.aborted) {
+      throw new ApiError("The Primer is taking longer than expected to respond. Please try again.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null);
@@ -82,6 +110,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(detail);
   }
 
+  // 204 (e.g. DELETE /children/{id}) has no body — calling .json() on an
+  // empty response throws, so this isn't just an optimization
+  if (response.status === 204) return undefined as T;
+
   return response.json() as Promise<T>;
 }
 
@@ -90,6 +122,10 @@ export function createChild(name: string): Promise<Child> {
     method: "POST",
     body: JSON.stringify({ name }),
   });
+}
+
+export function fetchChild(childId: string): Promise<Child> {
+  return request<Child>(`/children/${childId}`);
 }
 
 export function fetchProblem(childId: string, skill: SkillCode): Promise<Problem> {
@@ -131,6 +167,13 @@ export function fetchMyChildren(token: string): Promise<ChildProgress[]> {
 export function claimChild(childId: string, token: string): Promise<Child> {
   return request<Child>(`/children/${childId}/claim`, {
     method: "POST",
+    headers: authHeaders(token),
+  });
+}
+
+export function deleteChild(childId: string, token: string): Promise<void> {
+  return request<void>(`/children/${childId}`, {
+    method: "DELETE",
     headers: authHeaders(token),
   });
 }

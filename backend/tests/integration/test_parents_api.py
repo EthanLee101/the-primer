@@ -269,3 +269,51 @@ def test_recent_attempts_excludes_unanswered_ones(cleanup_emails: list[str]) -> 
     recent = dashboard[0]["recent_attempts"]
     assert len(recent) == 1
     assert all(a["correct"] is not None for a in recent)
+
+
+def test_deleting_own_child_removes_it_and_its_data(cleanup_emails: list[str]) -> None:
+    cleanup_emails.append("deleter@example.com")
+    token = client.post(
+        "/parents", json={"email": "deleter@example.com", "password": "correct horse battery"}
+    ).json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    child_id = client.post("/children", json={"name": "to-delete"}, headers=headers).json()["id"]
+    problem = client.post(f"/children/{child_id}/problems", params={"skill": "addition"}).json()
+    client.post(
+        f"/attempts/{problem['attempt_id']}/answer",
+        json={"submitted_answer": problem["operand_a"] + problem["operand_b"]},
+    )
+
+    response = client.delete(f"/children/{child_id}", headers=headers)
+    assert response.status_code == 204
+
+    dashboard = client.get("/parents/me/children", headers=headers).json()
+    assert dashboard == []
+
+
+def test_deleting_another_parents_child_404s(cleanup_emails: list[str]) -> None:
+    cleanup_emails.append("child-owner@example.com")
+    cleanup_emails.append("not-the-owner@example.com")
+    owner_token = client.post(
+        "/parents", json={"email": "child-owner@example.com", "password": "correct horse battery"}
+    ).json()["access_token"]
+    other_token = client.post(
+        "/parents",
+        json={"email": "not-the-owner@example.com", "password": "correct horse battery"},
+    ).json()["access_token"]
+
+    child_id = client.post(
+        "/children", json={"name": "not-yours"}, headers={"Authorization": f"Bearer {owner_token}"}
+    ).json()["id"]
+
+    response = client.delete(
+        f"/children/{child_id}", headers={"Authorization": f"Bearer {other_token}"}
+    )
+    assert response.status_code == 404
+
+    # still there for the actual owner
+    dashboard = client.get(
+        "/parents/me/children", headers={"Authorization": f"Bearer {owner_token}"}
+    ).json()
+    assert len(dashboard) == 1

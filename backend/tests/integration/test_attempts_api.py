@@ -87,3 +87,22 @@ def test_unknown_skill_400s(child_id: uuid.UUID) -> None:
 def test_unknown_child_404s() -> None:
     response = client.post(f"/children/{uuid.uuid4()}/problems", params={"skill": "addition"})
     assert response.status_code == 404
+
+
+def test_first_graded_answer_starts_a_one_day_streak(child_id: uuid.UUID) -> None:
+    problem = client.post(f"/children/{child_id}/problems", params={"skill": "addition"}).json()
+    client.post(f"/attempts/{problem['attempt_id']}/answer", json={"submitted_answer": 0})
+
+    child = client.get(f"/children/{child_id}").json()
+    assert child["current_streak"] == 1
+
+
+def test_a_second_graded_answer_the_same_day_does_not_double_increment(
+    child_id: uuid.UUID,
+) -> None:
+    for _ in range(2):
+        problem = client.post(f"/children/{child_id}/problems", params={"skill": "addition"}).json()
+        client.post(f"/attempts/{problem['attempt_id']}/answer", json={"submitted_answer": 0})
+
+    child = client.get(f"/children/{child_id}").json()
+    assert child["current_streak"] == 1

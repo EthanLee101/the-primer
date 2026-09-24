@@ -3,14 +3,14 @@ import uuid
 from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import CursorResult, select, update
+from sqlalchemy import CursorResult, delete, select, update
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_parent, get_current_parent_optional
 from app.config import get_settings
 from app.db import get_db
 from app.mastery_repo import get_or_create_mastery
-from app.models import Attempt, Child, Parent, Skill
+from app.models import Attempt, Child, Mastery, Parent, Skill
 from app.problems import SKILL_OPERATIONS, generate_problem
 from app.rate_limit import limiter
 from app.schemas import ChildCreate, ChildOut, ProblemOut
@@ -35,7 +35,30 @@ def create_child(
     db.add(child)
     db.commit()
     db.refresh(child)
-    return ChildOut(id=child.public_id, name=child.name, created_at=child.created_at)
+    return ChildOut(
+        id=child.public_id,
+        name=child.name,
+        created_at=child.created_at,
+        current_streak=child.current_streak,
+    )
+
+
+@router.get("/{child_id}", response_model=ChildOut)
+def get_child(child_id: uuid.UUID, db: Session = Depends(get_db)) -> ChildOut:
+    """Unauthenticated, same as the other child-facing endpoints — see the
+    Known gaps section in ARCHITECTURE.md for why. Exists so a returning
+    child's localStorage-cached Child (which only reflects the state at
+    the moment they last entered their name) picks up a fresh streak on
+    load, without needing a login."""
+    child = db.scalar(select(Child).where(Child.public_id == child_id))
+    if child is None:
+        raise HTTPException(status_code=404, detail="child not found")
+    return ChildOut(
+        id=child.public_id,
+        name=child.name,
+        created_at=child.created_at,
+        current_streak=child.current_streak,
+    )
 
 
 @router.post("/{child_id}/claim", response_model=ChildOut)
@@ -65,7 +88,36 @@ def claim_child(
         raise HTTPException(
             status_code=409, detail="This child is already linked to another account."
         )
-    return ChildOut(id=child.public_id, name=child.name, created_at=child.created_at)
+    return ChildOut(
+        id=child.public_id,
+        name=child.name,
+        created_at=child.created_at,
+        current_streak=child.current_streak,
+    )
+
+
+@router.delete("/{child_id}", status_code=204)
+def delete_child(
+    child_id: uuid.UUID, parent: Parent = Depends(get_current_parent), db: Session = Depends(get_db)
+) -> None:
+    """A genuine delete, not an unlink — removing the parent_id link would
+    leave the child's practice history orphaned in the database rather
+    than actually cleaning it up. 404 uniformly for "doesn't exist" and
+    "exists but isn't yours," rather than a 403/409 that would confirm to
+    a non-owner that the child exists at all — same posture as claim_child
+    distinguishing 404 from 409, just the other direction: here there's no
+    legitimate reason for a non-owner to learn anything about a child that
+    isn't theirs."""
+    child = db.scalar(
+        select(Child).where(Child.public_id == child_id, Child.parent_id == parent.id)
+    )
+    if child is None:
+        raise HTTPException(status_code=404, detail="child not found")
+
+    db.execute(delete(Attempt).where(Attempt.child_id == child.id))
+    db.execute(delete(Mastery).where(Mastery.child_id == child.id))
+    db.delete(child)
+    db.commit()
 
 
 @router.post("/{child_id}/problems", response_model=ProblemOut, status_code=201)

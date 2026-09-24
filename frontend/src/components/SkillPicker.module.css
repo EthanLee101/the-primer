@@ -17,6 +17,15 @@
   text-align: center;
 }
 
+.streak {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--gold);
+  margin: -16px 0 0;
+  text-align: center;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(140px, 1fr));

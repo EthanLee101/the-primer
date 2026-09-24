@@ -17,6 +17,7 @@ class ChildOut(BaseModel):
     id: uuid.UUID
     name: str
     created_at: datetime
+    current_streak: int
 
 
 class ProblemOut(BaseModel):

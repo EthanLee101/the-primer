@@ -15,6 +15,7 @@ from app.models import Attempt
 from app.problems import SKILL_OPERATIONS, format_prompt, grade
 from app.rate_limit import limiter
 from app.schemas import AnswerResult, AnswerSubmit
+from app.streak import StreakState, update_streak
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,15 @@ def submit_answer(
 
     mastery = get_or_create_mastery(db, attempt.child_id, attempt.skill_id)
     apply_state(mastery, apply_attempt(to_state(mastery), is_correct))
+
+    # streak counts a day practiced, not a day answered correctly — updates
+    # regardless of is_correct, same trigger point as the mastery update above
+    streak = update_streak(
+        StreakState(attempt.child.current_streak, attempt.child.last_practice_date),
+        datetime.now(UTC).date(),
+    )
+    attempt.child.current_streak = streak.current_streak
+    attempt.child.last_practice_date = streak.last_practice_date
 
     db.commit()
 

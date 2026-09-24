@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, claimChild, fetchMyChildren, type ChildProgress } from "../../api";
+import {
+  ApiError,
+  claimChild,
+  deleteChild,
+  fetchMyChildren,
+  type AttemptSummary,
+  type ChildProgress,
+} from "../../api";
 import { loadSavedChild } from "../../childStorage";
 import { useAuth } from "../../auth/useAuth";
+import { PracticeHistoryChart } from "./PracticeHistoryChart";
 import styles from "./ParentDashboard.module.css";
 
 interface ParentDashboardProps {
@@ -58,6 +66,22 @@ export function ParentDashboard({ onBackToChild }: ParentDashboardProps) {
     }
   }
 
+  async function handleDelete(childId: string, name: string): Promise<void> {
+    if (token === null) return;
+    // no custom modal system in this app yet — a native confirm is
+    // proportionate for one destructive action, not worth building one for
+    if (!window.confirm(`Remove ${name} and all their practice history? This can't be undone.`)) {
+      return;
+    }
+    setError(null);
+    try {
+      await deleteChild(childId, token);
+      await load(new AbortController().signal);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't reach the Primer.");
+    }
+  }
+
   return (
     <div className={styles.page}>
       <div className={styles.header}>
@@ -100,7 +124,15 @@ export function ParentDashboard({ onBackToChild }: ParentDashboardProps) {
 
       {children?.map((child) => (
         <div key={child.id} className={styles.childCard}>
-          <h2 className={styles.childName}>{child.name}</h2>
+          <div className={styles.childCardHeader}>
+            <h2 className={styles.childName}>{child.name}</h2>
+            <button
+              className={styles.removeButton}
+              onClick={() => void handleDelete(child.id, child.name)}
+            >
+              Remove
+            </button>
+          </div>
 
           <p className={styles.sectionLabel}>Mastery</p>
           {child.mastery.length === 0 ? (
@@ -113,19 +145,28 @@ export function ParentDashboard({ onBackToChild }: ParentDashboardProps) {
                   <th>Difficulty</th>
                   <th>Mastery</th>
                   <th>Attempts</th>
+                  <th>Trend</th>
                 </tr>
               </thead>
               <tbody>
-                {child.mastery.map((m) => (
-                  <tr key={m.skill_code}>
-                    <td className={styles.skillName}>{m.skill_code}</td>
-                    <td>{m.difficulty}</td>
-                    <td>{formatMastery(m.p_know)}</td>
-                    <td>
-                      {m.correct_count}/{m.attempts_count}
-                    </td>
-                  </tr>
-                ))}
+                {child.mastery.map((m) => {
+                  const skillAttempts: AttemptSummary[] = child.recent_attempts.filter(
+                    (a) => a.skill_code === m.skill_code,
+                  );
+                  return (
+                    <tr key={m.skill_code}>
+                      <td className={styles.skillName}>{m.skill_code}</td>
+                      <td>{m.difficulty}</td>
+                      <td>{formatMastery(m.p_know)}</td>
+                      <td>
+                        {m.correct_count}/{m.attempts_count}
+                      </td>
+                      <td>
+                        <PracticeHistoryChart attempts={skillAttempts} />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

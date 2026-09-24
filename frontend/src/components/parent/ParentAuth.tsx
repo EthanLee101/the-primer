@@ -13,13 +13,22 @@ export function ParentAuth({ onBackToChild }: ParentAuthProps) {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(event: React.FormEvent): Promise<void> {
     event.preventDefault();
-    setSubmitting(true);
     setError(null);
+
+    // client-side only — a typo guard, not a security control; the
+    // backend never sees or validates a "confirm" field at all
+    if (mode === "register" && password !== confirmPassword) {
+      setError("Passwords don't match.");
+      return;
+    }
+
+    setSubmitting(true);
     try {
       const session = mode === "login" ? await loginParent(email, password) : await registerParent(email, password);
       login(session);
@@ -91,6 +100,22 @@ export function ParentAuth({ onBackToChild }: ParentAuthProps) {
               required
             />
           </div>
+          {mode === "register" && (
+            <div>
+              <label className={styles.label} htmlFor="confirm-password">
+                Confirm password
+              </label>
+              <input
+                id="confirm-password"
+                className={styles.input}
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                minLength={8}
+                required
+              />
+            </div>
+          )}
           <button className={styles.button} type="submit" disabled={submitting}>
             {submitting ? "Please wait…" : mode === "login" ? "Log in" : "Create account"}
           </button>

@@ -1,0 +1,54 @@
+.stage {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.card {
+  width: min(560px, 100%);
+  background: var(--panel);
+  border: 2px solid var(--panel-border);
+  border-radius: 20px;
+  padding: 40px 36px;
+  box-shadow: 0 20px 40px rgba(58, 46, 31, 0.18);
+}
+
+.title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(1.8rem, 6vw, 2.4rem);
+  margin: 0 0 20px;
+  color: var(--ink);
+  text-align: center;
+}
+
+.heading {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.15rem;
+  margin: 24px 0 8px;
+  color: var(--accent);
+}
+
+.paragraph {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--ink);
+  margin: 0;
+}
+
+.button {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 12px 20px;
+  border-radius: 12px;
+  border: none;
+  background: var(--gold);
+  color: var(--ink);
+  cursor: pointer;
+  margin-top: 28px;
+}

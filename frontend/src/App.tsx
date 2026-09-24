@@ -4,6 +4,7 @@ import { loadSavedChild, saveChild } from "./childStorage";
 import { NameEntry } from "./components/NameEntry";
 import { SkillPicker } from "./components/SkillPicker";
 import { ProblemView } from "./components/ProblemView";
+import { About } from "./components/About";
 import { ParentAuth } from "./components/parent/ParentAuth";
 import { ParentDashboard } from "./components/parent/ParentDashboard";
 import { AuthProvider } from "./auth/AuthContext";
@@ -12,6 +13,7 @@ import styles from "./App.module.css";
 
 type ChildScreen =
   | { name: "name-entry" }
+  | { name: "about"; from: ChildScreen }
   | { name: "skill-picker"; child: Child }
   | { name: "problem"; child: Child; skill: SkillCode };
 
@@ -33,11 +35,15 @@ function ChildArea({ onSwitchArea }: AreaProps) {
           saveChild(child);
           setScreen({ name: "skill-picker", child });
         }}
+        onAbout={() => setScreen({ name: "about", from: screen })}
       />
     );
+  } else if (screen.name === "about") {
+    content = <About onBack={() => setScreen(screen.from)} />;
   } else if (screen.name === "skill-picker") {
     content = (
       <SkillPicker
+        childId={screen.child.id}
         childName={screen.child.name}
         onSelect={(skill) => setScreen({ name: "problem", child: screen.child, skill })}
       />

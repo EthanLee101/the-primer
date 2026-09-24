@@ -15,9 +15,10 @@ const item: Variants = {
 
 interface NameEntryProps {
   onReady: (child: Child) => void;
+  onAbout: () => void;
 }
 
-export function NameEntry({ onReady }: NameEntryProps) {
+export function NameEntry({ onReady, onAbout }: NameEntryProps) {
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +42,14 @@ export function NameEntry({ onReady }: NameEntryProps) {
   return (
     <div className={styles.stage}>
       <motion.div className={styles.card} variants={container} initial="hidden" animate="show">
+        {/* purely decorative echo of the difficulty bead rail from
+            ProblemView — ties the landing screen to the app's own visual
+            identity rather than introducing a new motif */}
+        <motion.div className={styles.beadRow} variants={item} aria-hidden="true">
+          {Array.from({ length: 5 }, (_, i) => (
+            <span key={i} className={styles.decorativeBead} />
+          ))}
+        </motion.div>
         <motion.h1 className={styles.title} variants={item}>
           The Primer
         </motion.h1>
@@ -61,6 +70,9 @@ export function NameEntry({ onReady }: NameEntryProps) {
           </button>
           {error && <p className={styles.error}>{error}</p>}
         </motion.form>
+        <motion.button className={styles.aboutLink} variants={item} onClick={onAbout}>
+          About this project
+        </motion.button>
       </motion.div>
     </div>
   );

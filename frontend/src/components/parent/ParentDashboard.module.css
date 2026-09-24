@@ -119,6 +119,13 @@
   border-top: none;
 }
 
+.childCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
 .childName {
   font-family: var(--font-display);
   font-weight: 700;
@@ -126,6 +133,20 @@
   font-size: var(--text-h1);
   margin: 0 0 4px;
   color: var(--ink);
+}
+
+.removeButton {
+  background: none;
+  border: 1.5px solid var(--panel-border);
+  border-radius: 4px;
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 6px 10px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .sectionLabel {

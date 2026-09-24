@@ -123,15 +123,100 @@ change in exposure from localhost-only. Two pieces:
   natural next step, not attempted here.
 
 12. **Deployment & polish** — backend → Render, DB → Neon, frontend →
-    Vercel; secrets/env config; stretch (second skill domain / theming) if
-    time allows.
-    🌐 **Needs Neon, Render, and Vercel accounts** — nothing before this
-    increment requires anything outside local Docker Postgres.
+    Vercel; secrets/env config. ✅ **Done** — live at
+    `https://the-primer-mu.vercel.app` (frontend) /
+    `https://the-primer.onrender.com` (backend). Verified end-to-end against
+    the real deployed stack, not just each piece in isolation: migrations
+    applied cleanly to Neon (including the `pgcrypto`-backed opaque-ID
+    migration), CORS correctly allows the Vercel origin and rejects
+    untrusted ones (checked via a real preflight, not just a simple
+    request), the sequential-integer enumeration guard still 422s in
+    production, and a full create-child → serve-problem → answer flow was
+    run with the actual Vercel `Origin` header. Also caught live: the
+    Gemini free-tier quota returned `RESOURCE_EXHAUSTED` on one request —
+    confirmed this hits `except errors.APIError` in `app/llm.py` exactly as
+    designed back in increment 8, degrading to no explanation rather than a
+    failed request. Good real-world confirmation that decision holds up
+    under actual quota pressure, not just in tests.
+    Stretch (second skill domain / theming) not attempted — time-permitting
+    only, never a requirement of this increment.
 
 > Note: this 12-step breakdown was reconstructed from
 > `adaptive_tutor_handoff.md`'s build order and the resume bullets — the
 > user's original 12-increment list wasn't available this session. Correct
 > this list if it drifts from actual intent.
+
+## Post-launch: hardening + feature pass
+
+With the 12-step plan complete and the app live, this batch was a
+deliberate senior-engineer pass through the deployed app: a checklist audit
+(rate limiting, error handling, timeouts, DB indexes/query patterns,
+pagination, caching, duplicate submissions — most already covered by prior
+increments, see the audit table below) plus a set of features to flesh the
+project out.
+
+**Audit findings actually acted on** (the rest of the checklist — payments,
+file uploads, pagination, caching — were N/A or already covered; not
+repeated here):
+- **API request timeout** (`frontend/src/api.ts`) — `request()` had no
+  timeout at all; a hung backend (a Render cold start, or a genuine network
+  stall) left the UI stuck indefinitely with no error and no recovery. Now
+  wrapped in an AbortController-driven 15s timeout, surfaced as its own
+  distinct message.
+- **DB indexes** — grepped every migration and found zero explicit indexes
+  beyond what unique constraints already provided. Added `Attempt.child_id`
+  (filtered *and* ordered in the dashboard's recent-attempts query) and
+  `Child.parent_id` (filtered in the children lookup) — Postgres doesn't
+  auto-index FK columns.
+- **N+1-shaped query** in `my_children` (`app/routers/parents.py`) —
+  `m.skill.code`/`a.skill.code` were lazy-loaded per row with no eager
+  loading. Bounded in practice by the 4 distinct skill rows (SQLAlchemy's
+  identity map dedupes within a session), not a true N-per-row blowup, but
+  fixed with `selectinload` anyway since a real join is strictly better.
+- **Gemini spend caps**: not implementable at the code level — the
+  `google-genai` SDK exposes no hard-$-cap setting. Rate limiting already
+  bounds worst-case call volume; an actual spend cap has to be set in
+  Google AI Studio/Cloud Console's own budget-alert settings, outside this
+  repo. Documented here rather than faking a control that doesn't exist.
+
+**Features added:**
+- **Return/streak tracker** (`app/streak.py`, `Child.current_streak` /
+  `last_practice_date`) — consecutive calendar days (naive UTC) with at
+  least one graded attempt. Stored and incrementally updated in
+  `submit_answer` alongside the existing `Mastery` update, mirroring how
+  `Mastery` already stores derived adaptive state rather than recomputing
+  it on every read. Surfaced on `SkillPicker` (the app's existing "welcome
+  back" moment), fetched fresh via a new unauthenticated `GET
+  /children/{id}` since a returning child's `localStorage`-cached `Child`
+  goes stale between visits.
+- **Practice-history chart** (`PracticeHistoryChart.tsx`) — a per-skill
+  inline-SVG sparkline on the parent dashboard, reusing the *existing*
+  `recent_attempts` data (bumped from `.limit(10)` to `.limit(30)` in
+  `parents.py` since 10 was shared across all of a child's skills combined,
+  newest-first — a multi-skill child could get a near-empty per-skill
+  chart otherwise). No new endpoint, no migration. Built following the
+  `dataviz` skill's procedure: validated the app's existing
+  `--success`/`--accent` tokens as a categorical pair with
+  `validate_palette.js` before using them for anything, and they failed
+  (ΔE 3.1 for protanopia, well under the floor) — so correct/wrong is
+  encoded by fill (filled vs. hollow dot), not a second competing hue,
+  which sidesteps the CVD problem entirely rather than working around a
+  failing pair.
+- **Delete/unlink a child** (`DELETE /children/{id}`) — a genuine delete
+  (removes `Attempt` and `Mastery` rows too), not just clearing
+  `parent_id`, since the actual motivation was the cleanup problem this
+  project hit manually, repeatedly, this session (leftover test/demo
+  children) — unlinking would leave that data orphaned rather than
+  actually cleaning it up. Ownership-scoped, 404 uniformly for "doesn't
+  exist" and "exists but isn't yours" (same non-leaking posture as
+  `claim_child`'s 404/409 split, just the other direction).
+- **About page** (`About.tsx`) — reachable from the name-entry screen,
+  real content for a portfolio visitor: the Diamond Age framing, how BKT
+  adaptivity actually works, the tech stack. No router — added as another
+  case in `App.tsx`'s existing state-based `ChildScreen` switch.
+- **Confirm-password on registration** (`ParentAuth.tsx`) — client-side
+  match validation before submit; purely a typo guard, the backend never
+  sees or validates a "confirm" field.
 
 ## Known gaps (tracked, not accidental)
 

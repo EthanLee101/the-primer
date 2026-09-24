@@ -16,6 +16,7 @@ def test_create_child() -> None:
     body = response.json()
     assert body["name"] == "Ada"
     assert "id" in body and "created_at" in body
+    assert body["current_streak"] == 0
     # the exposed id must be an opaque, unguessable identifier, never the
     # sequential internal PK — see test_internal_id_cannot_be_used_to_reach_a_child
     assert uuid.UUID(body["id"])
@@ -52,3 +53,23 @@ def test_internal_id_cannot_be_used_to_reach_a_child() -> None:
 
         db.delete(child)
         db.commit()
+
+
+def test_get_child_returns_current_state() -> None:
+    created = client.post("/children", json={"name": "get-child-test"}).json()
+
+    response = client.get(f"/children/{created['id']}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == created["id"]
+    assert body["name"] == "get-child-test"
+    assert body["current_streak"] == 0
+
+    with SessionLocal() as db:
+        db.query(Child).filter(Child.public_id == created["id"]).delete()
+        db.commit()
+
+
+def test_get_unknown_child_404s() -> None:
+    response = client.get(f"/children/{uuid.uuid4()}")
+    assert response.status_code == 404

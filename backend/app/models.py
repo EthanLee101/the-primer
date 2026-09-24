@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -35,8 +35,12 @@ class Child(Base):
     # nullable: children created through the existing unauthenticated
     # "what's your name?" flow (increments 6/7) have no parent account yet —
     # only children created while a parent session is active get linked
-    parent_id: Mapped[int | None] = mapped_column(ForeignKey("parent.id"), default=None)
+    # indexed — filtered directly in the parent dashboard's children lookup
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("parent.id"), index=True, default=None)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    # streak tracking — see app/streak.py for the update logic
+    current_streak: Mapped[int] = mapped_column(default=0)
+    last_practice_date: Mapped[date | None] = mapped_column(default=None)
 
     parent: Mapped["Parent | None"] = relationship(back_populates="children")
     attempts: Mapped[list["Attempt"]] = relationship(back_populates="child")
@@ -65,7 +69,10 @@ class Attempt(Base):
     # implementation detail for FKs/joins; nothing outside this file ever
     # sees it.
     public_id: Mapped[uuid.UUID] = mapped_column(unique=True, default=uuid.uuid4)
-    child_id: Mapped[int] = mapped_column(ForeignKey("child.id"))
+    # indexed — every attempt for a child is looked up by this, filtered
+    # and ordered, on every parent-dashboard fetch. Postgres doesn't
+    # auto-index FK columns the way some other databases do.
+    child_id: Mapped[int] = mapped_column(ForeignKey("child.id"), index=True)
     skill_id: Mapped[int] = mapped_column(ForeignKey("skill.id"))
     difficulty: Mapped[int]
     operand_a: Mapped[int]

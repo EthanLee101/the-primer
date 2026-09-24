@@ -11,6 +11,20 @@
   text-align: center;
 }
 
+.beadRow {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 20px;
+}
+
+.decorativeBead {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--gold);
+}
+
 .title {
   font-family: var(--font-display);
   font-weight: 800;
@@ -72,4 +86,15 @@
   color: var(--accent);
   font-size: 0.95rem;
   margin: 0;
+}
+
+.aboutLink {
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  text-decoration: underline;
+  cursor: pointer;
+  margin-top: 24px;
 }

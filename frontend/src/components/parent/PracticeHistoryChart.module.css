@@ -1,0 +1,28 @@
+.chart {
+  display: block;
+  /* the internal viewBox is 200x40 units — an abstract coordinate space,
+     unrelated to this rendered size — width: 100% already makes this
+     responsive to its table cell; max-width just keeps it from growing
+     too wide as a 5th column on a narrow phone-width table */
+  width: 100%;
+  max-width: 130px;
+  height: 40px;
+  margin: 4px 0 2px;
+}
+
+.line {
+  stroke: var(--panel-border);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.dotCorrect {
+  fill: var(--success);
+  stroke: none;
+}
+
+.dotWrong {
+  fill: var(--panel);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
