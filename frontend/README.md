@@ -2,8 +2,9 @@
 
 React + TypeScript (Vite) client: the child-facing practice UI ("Counting
 Blocks" theme) and the parent dashboard ("Blueprint Primer" theme). See
-`../README.md` for the project overview and `../ARCHITECTURE.md` for the
-full history of decisions behind this code.
+`../README.md` for the project overview, `../ARCHITECTURE.md` for the
+short design-decisions summary, and `../DECISIONS.md` for the full history
+behind this code.
 
 ## Setup
 
@@ -36,7 +37,7 @@ block, `src/test/setup.ts`). Deliberately minimal — targeted regression
 coverage for bugs that have actually surfaced in this app (a frontend
 error-message leak, a double-submission race condition, the recent-
 sessions disclosure), not a push for exhaustive coverage. See
-`ARCHITECTURE.md`'s "Frontend test suite" section for what each test file
+`../DECISIONS.md`'s "Frontend test suite" section for what each test file
 covers and why.
 
 ## Lint & build

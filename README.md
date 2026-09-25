@@ -25,7 +25,7 @@ inactivity can take up to a minute to wake it up)
   step — including a deliberate departure from textbook BKT (a `P_FORGET`
   parameter) so a difficulty curve can come back down after a hot streak
   instead of getting permanently stuck. See `backend/app/mastery.py` and
-  `ARCHITECTURE.md`'s tech-stack table for the full reasoning, including
+  `DECISIONS.md`'s tech-stack table for the full reasoning, including
   two real bugs the math caught before they shipped (a floating-point
   lockup, and a difficulty swing that was mathematically correct but felt
   jarring to actually play).
@@ -43,7 +43,7 @@ inactivity can take up to a minute to wake it up)
   opaque per-record UUIDs instead of sequential IDs, and a global error
   handler that never leaks a stack trace or exception detail to a client
   (the frontend got the same treatment this session — see
-  `ARCHITECTURE.md`'s "Post-PIN pass").
+  `DECISIONS.md`'s "Post-PIN pass").
 - **Tested on both ends.** 100+ backend tests (pytest) covering the
   adaptivity math, auth/security edge cases, and rate limiting; a
   frontend suite (Vitest + Testing Library) targeted at regressions that
@@ -64,11 +64,15 @@ SQLAlchemy · Alembic · Gemini API · Argon2id · JWT · Vitest · pytest
 - [`frontend/`](frontend/) — React client (child practice UI + parent
   dashboard). See [`frontend/README.md`](frontend/README.md) for setup,
   tests, and project structure.
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — the full, honest build log: every
-  real decision, every bug that actually shipped and got caught, every
-  deliberately-deferred tradeoff, in the order it happened. Written to be
-  the cross-session source of truth, not marketing copy — if you want to
-  know *why* something is built the way it is, this is where that lives.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — the short version: what this
+  project is, the key design decisions (why BKT, why the LLM never
+  touches grading, the security posture), tech stack, and scope. Start
+  here.
+- [`DECISIONS.md`](DECISIONS.md) — the full, honest build log: every real
+  decision, every bug that actually shipped and got caught, every
+  deliberately-deferred tradeoff, in the order it happened. If you want the
+  detail behind any line in `ARCHITECTURE.md` — or evidence of how it was
+  actually debugged and tested — it's here.
 
 ## License
 
